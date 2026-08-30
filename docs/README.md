@@ -21,6 +21,6 @@ voice-agent-shell の設計と使い方をまとめたドキュメントです�
 ## 関連ファイル
 
 - [`../README.md`](../README.md) — プロジェクトの概要と最短のセットアップ
-- [`../CLAUDE.md`](../CLAUDE.md) / [`../AGENTS.md`](../AGENTS.md) — AI コーディングエージェント向けの要約（守るべき前提・コードスタイル）
+- [`../CLAUDE.md`](../CLAUDE.md) — AI コーディングエージェント向けの要約（守るべき前提・コードスタイル）
 - 切り出し元・兄弟プロジェクト（ドメイン注入の実例）: [gee-ai-agent](https://github.com/shimizu/gee-ai-agent) /
   [web-gis-ai-agent](https://github.com/shimizu/web-gis-ai-agent) / [portwatch-dashboard](https://github.com/shimizu/portwatch-dashboard)

@@ -109,7 +109,7 @@ Worker へ API キー・DOM・localStorage は渡さない。
 `agentDeps`（useMemo）/ `buildSystem`（`contextParts`）/ `voiceExtraTools` / `useVoiceSession` の `buildContext`・`buildSnapshot` /
 `ChatPanel` の `renderMessage` / `Header` の `leftSlot` / `.workspace-main` の中身（地図・キャンバス等）。
 
-## コードスタイル（AGENTS.md と同じ）
+## コードスタイル
 プレーン JS/JSX（TypeScript なし）、2 スペース、セミコロン無し、シングルクォート。コンポーネントは `PascalCase.jsx`、
 モジュールは `kebab-case.js`。各モジュール先頭に「役割 / 関係 / 流用元」のヘッダーコメントを置く。UI 文言・コメントは日本語。
 
@@ -128,7 +128,7 @@ Worker へ API キー・DOM・localStorage は渡さない。
 切り出し元: gee-ai-agent（Google Earth Engine 分析エージェント。地図レイヤー・データセット・チャート・PortWatch を持つ。
 `capture_map`〔地図スクショ〕は `extraTools`、レイヤー一覧は `contextParts` / `buildContext`、チャートカードは `renderMessage` に対応する）。
 ドメイン注入の実例は兄弟リポジトリ（github.com/shimizu/web-gis-ai-agent, github.com/shimizu/portwatch-dashboard）を参照。
-`AGENTS.md`（構成・スタイルの短い要約）と `README.md`（ツールソース契約のコード例、ドメインを足す 7 手順）も併読する。
+`README.md`（ツールソース契約のコード例、ドメインを足す 7 手順）も併読する。
 詳細ドキュメントは `docs/`（`README.md` が索引: usage / architecture / agent-loop / voice / extending）。仕組みを変えたら該当ファイルも更新する。
 
 ## コミット規約
