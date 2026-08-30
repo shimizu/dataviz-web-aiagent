@@ -4,7 +4,8 @@
 //       ここに 1 行足すだけでツール登録とシステムプロンプト（スキル）の両方へ反映される。
 // 関係: register-tools.js（登録）と hooks/useAgentSession.js（スキル連結）が読む。
 //       サンプルの example ソースが雛形（tools/example/ + agent/skills/example.js）。
+import { datavizSource } from './dataviz/index.js'
 import { exampleSource } from './example/index.js'
 import { javascriptSource } from './javascript/index.js'
 
-export const SOURCES = [exampleSource, javascriptSource]
+export const SOURCES = [datavizSource, exampleSource, javascriptSource]

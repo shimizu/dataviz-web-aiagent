@@ -10,6 +10,8 @@
 //   - log(message): 実行ログ
 //   - getDataset(id): 任意。注入すると execute_javascript が datasetId / datasetIds を受け付け、
 //     { id, records, columns, metadata } を隔離 Worker へ渡す（未注入なら args だけのサンドボックス）
+//   - onAnalysisResult(result): 任意。execute_javascript の成功結果（全行）を受け取る
+//     （dataviz の save_dataset が codeHash で拾って派生データセットにする）
 import { ToolRegistry } from '../agent/tool-registry.js'
 import { SOURCES } from './sources.js'
 

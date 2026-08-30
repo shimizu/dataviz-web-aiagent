@@ -121,6 +121,8 @@ Worker へ API キー・DOM・localStorage は渡さない。
   `execute_javascript` の `new Function` は **Worker のグローバルスコープ**で動き、document の meta CSP は Worker に継承されない
   （同一オリジンの実ファイルとして読むため）。したがって `script-src` は `'self'` のままでよい（Chromium で実測済み）。
   メインスレッド側で `new Function` / `eval` を使うなら `'unsafe-eval'` が要る。
+  **ライブラリが内部で `new Function` を使うことがある**（例: `d3-dsv` の `parse()`。`parseRows()` なら安全）。
+  dev では CSP が効かないので、外部ライブラリを足したら `npm run preview` で必ず確認する。
 - `localStorage` キーは `voice-agent-shell.*`。「新しい会話」で会話・ログを全消去。
 - `@google/genai` は `useVoiceSession` の動的 import 経由でのみ読む（初期チャンクに入れない）。
 

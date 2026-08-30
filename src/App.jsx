@@ -11,13 +11,20 @@ import { useSettings } from './hooks/useSettings'
 import { useAgentSession } from './hooks/useAgentSession'
 import { useVoiceSession } from './hooks/useVoiceSession'
 import { useVisualViewport } from './hooks/useVisualViewport'
+import { useHydrateOnce, useHydrated, useStoreItems } from './hooks/useDatavizStores'
 
 import { composeSystemPrompt } from './agent/system-prompt.js'
 import { buildSystemBlocks } from './agent/system-context.js'
 import { SOURCES } from './tools/sources.js'
 import { loadSetting, saveSetting, SETTINGS_KEYS, storageKey } from './data/settings.js'
+import { datasetStore } from './data/dataset-store.js'
+import { fileStore } from './data/file-store.js'
+import { analysisCache } from './data/analysis-cache.js'
+import { importFiles } from './data/import-files.js'
+import { formatDatasetList } from './data/dataset-shapes.js'
 import { uuid } from './utils/ids.js'
 
+import DatavizWorkspace from './components/dataviz/DatavizWorkspace'
 import Header from './components/Header'
 import ApiSettings from './components/ApiSettings'
 import Sidebar from './components/Sidebar'
@@ -32,6 +39,8 @@ import './styles/app.css'
 const LOG_STORAGE = storageKey('operation-log')
 // 安定プレフィックス（BASE + 全ソースのスキル）。プロンプトキャッシュの対象なので揮発情報を混ぜない。
 const SYSTEM_PROMPT = composeSystemPrompt({ skills: SOURCES.flatMap((s) => s.skills ?? []) })
+// ストアはモジュールスコープに 1 つだけ置く（agentDeps を参照安定にして registry を作り直さないため）。
+const DATAVIZ_STORES = [datasetStore, fileStore]
 
 function loadLogs() {
   try {
@@ -64,11 +73,54 @@ function App() {
 
   const [rightOpen, setRightOpen] = useState(true)
 
-  // --- ドメイン注入点（シェルでは空）---
-  // ツールソースへ渡す依存（ストア・コールバック等）。参照安定にする（registry のメモ化キー）。
-  const agentDeps = useMemo(() => ({}), [])
+  // --- データ（アップロードされたデータセット）---
+  useHydrateOnce(DATAVIZ_STORES)
+  const datasets = useStoreItems(datasetStore)
+  const datasetsHydrated = useHydrated(datasetStore)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importErrors, setImportErrors] = useState([])
+
+  const handleFiles = useCallback(
+    async (files) => {
+      setImportBusy(true)
+      setImportErrors([])
+      try {
+        const { added, errors } = await importFiles(files, { datasetStore, fileStore, log })
+        setImportErrors(errors)
+        if (added.length > 0) log(`✓ ${added.length} 件のデータセットを読み込みました`)
+      } finally {
+        setImportBusy(false)
+      }
+    },
+    [log],
+  )
+  const handleRemoveDataset = useCallback(
+    (id) => {
+      const target = datasetStore.get(id)
+      if (target) log(`🗑 ${id}（${target.name}）を削除しました`)
+      datasetStore.remove(id)
+    },
+    [log],
+  )
+
+  // --- ドメイン注入点 ---
+  // ツールソースへ渡す依存。すべてモジュールスコープのストア由来なので参照安定（registry のメモ化キー）。
+  const agentDeps = useMemo(
+    () => ({
+      datasetStore,
+      // execute_javascript がデータセットを読む口（同期）。
+      getDataset: (id) => datasetStore.getRuntime(id),
+      // JS 実行の全行を保持して save_dataset で昇格できるようにする。
+      onAnalysisResult: (result) => analysisCache.put(result),
+      getAnalysisResult: (codeHash) => analysisCache.get(codeHash),
+    }),
+    [],
+  )
   // 毎ターンの system。揮発情報（現在の状態）は contextParts に文字列 / 関数で足す。
-  const buildSystem = useCallback(() => buildSystemBlocks({ systemPrompt: SYSTEM_PROMPT, contextParts: [] }), [])
+  const buildSystem = useCallback(
+    () => buildSystemBlocks({ systemPrompt: SYSTEM_PROMPT, contextParts: [() => formatDatasetList(datasets)] }),
+    [datasets],
+  )
   // Gemini に追加で公開する関数（例: 画面のスクリーンショット）。[{ declaration, handler }]
   const voiceExtraTools = useMemo(() => [], [])
 
@@ -121,11 +173,15 @@ function App() {
     agentFinishedRef.current = notifyAgentFinished
   }, [notifyAgentFinished])
 
-  // 「新しい会話」= 会話・ログを全消去。
+  // 「新しい会話」= 会話・ログ・読み込んだデータ・可視化を全消去。
   const handleNewConversation = useCallback(() => {
     handleAbort()
     handleResetChat()
     setLogs([])
+    datasetStore.clear()
+    fileStore.clear()
+    analysisCache.clear()
+    setImportErrors([])
   }, [handleAbort, handleResetChat])
 
   // --- About / パネル ---
@@ -137,8 +193,10 @@ function App() {
   const [rightWidth, setRightWidth] = useState(420)
   const [rightHeight, setRightHeight] = useState(null)
 
-  const chatDisabled = !settings.apiKey
-  const chatDisabledReason = '⚙ 設定 から Claude API キーを設定してください。'
+  const chatDisabled = !settings.apiKey || !datasetsHydrated
+  const chatDisabledReason = settings.apiKey
+    ? '保存済みデータを読み込んでいます…'
+    : '⚙ 設定 から Claude API キーを設定してください。'
 
   const tabs = useMemo(
     () => [
@@ -178,6 +236,7 @@ function App() {
       messages,
       isRunning,
       chatDisabled,
+      chatDisabledReason,
       chatInput,
       setChatInput,
       chatInputRef,
@@ -217,7 +276,14 @@ function App() {
       />
       <div className="workspace">
         <main className="workspace-main">
-          <p className="empty-state">ここにドメインの主画面（地図・キャンバス・表など）を置きます。</p>
+          <DatavizWorkspace
+            datasets={datasets}
+            hydrated={datasetsHydrated}
+            busy={importBusy}
+            errors={importErrors}
+            onFiles={handleFiles}
+            onRemoveDataset={handleRemoveDataset}
+          />
         </main>
         <Sidebar
           side="right"

@@ -221,6 +221,14 @@ warnings があっても `ok:true` なら成功（Claude が warnings を読ん�
 | **M6 音声・仕上げ** | `buildContext` / `buildSnapshot` / `look_at_visualization`、「新しい会話」の全消去、CSP 最終確認 | 音声で「このグラフを見て」→ 画像送信後に応答。「新しい会話」で IDB が空。preview で CSP 違反ゼロ |
 
 ### 進捗
+- **M2 完了（2026-08-30）**: `src/data/{dataviz-db,record-store,dataset-store,file-store,analysis-cache,import-files,dataset-shapes}.js` /
+  `src/data/parsers/{tabular,geojson,geotiff}.js` / `src/hooks/useDatavizStores.js` / `src/components/dataviz/{DatavizWorkspace,DropZone,DatasetList,DatasetPreview}.jsx` /
+  `src/tools/dataviz/{index,definitions,dataset-handlers}.js` / `src/agent/skills/dataviz-workflow.js` / App.jsx 結線 / テスト 2 本（96 件）。
+  Chromium で実測: csv・tsv・geojson の取り込み → 一覧・型推定・プレビュー・GeoJSON 診断 → IndexedDB 永続 →
+  リロード復元 → 「新しい会話」で全消去まで動作。
+  **本番 CSP で判明した重要事項**: `d3-dsv` の `parse()` は行オブジェクト生成に `new Function` を使うため
+  `script-src 'self'` で失敗する（dev では CSP 非適用のため露見しない）。`parseRows()` を使うこと。
+  同様に**メインスレッドで動くライブラリが内部で `new Function` / `eval` を使っていないか、`npm run preview` で必ず確認する**。
 - **M1 完了（2026-08-30）**: `vite.runtime.config.js` / `src/viz-runtime/{index,geo-warp,raster-paint}.js` / `public/viz-frame.{html,js}` /
   `src/viz/{frame-protocol,viz-frame-bridge,viz-theme}.js` / `test/{geo-warp,viz-frame-bridge}.test.js`。
   `npm run build && vite preview` + Chromium で実測済み: opaque origin の frame で CSP `'self'` により `viz-runtime.js` が読めて

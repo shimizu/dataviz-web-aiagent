@@ -54,6 +54,7 @@ export default defineConfig([
         AbortSignal: 'readonly',
         DOMException: 'readonly',
         globalThis: 'readonly',
+        structuredClone: 'readonly',
         performance: 'readonly',
         createImageBitmap: 'readonly',
         ImageData: 'readonly',
