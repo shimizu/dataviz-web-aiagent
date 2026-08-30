@@ -6,7 +6,7 @@ function Header({ title = 'voice-agent-shell', rightOpen, onToggleRight, onShowA
   return (
     <header className="app-header">
       <div className="app-title">
-        🎙<span className="title-text"> {title}</span>
+        📊<span className="title-text"> {title}</span>
       </div>
 
       <button type="button" className="panel-toggle" onClick={onShowAbout} title="このアプリについて">

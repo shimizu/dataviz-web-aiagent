@@ -55,9 +55,9 @@ async function setup() {
   return { datasetStore, visualizationStore, vizBridge, posted, shown, registry }
 }
 
-test('dataviz ソースは描画ツールを含む 5 ツールを登録する', async () => {
+test('dataviz ソースは描画ツールを含む 6 ツールを登録する', async () => {
   const { registry } = await setup()
-  assert.deepEqual(registry.definitions().map((d) => d.name).sort(), ['describe_dataset', 'list_datasets', 'render_visualization', 'save_dataset', 'update_visualization'])
+  assert.deepEqual(registry.definitions().map((d) => d.name).sort(), ['describe_dataset', 'list_datasets', 'read_reference', 'render_visualization', 'save_dataset', 'update_visualization'])
 })
 
 test('render_visualization はデータセットを送って描き、保存し、カードを投稿して要約を返す', async () => {
@@ -168,6 +168,5 @@ test('スキルは決定的で、render 契約と theme の表を含む', () => 
   assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.colors\.primary` \| `#2563eb`/)
   for (const skill of [DATAVIZ_WORKFLOW_SKILL, DATAVIZ_CHARTS_SKILL]) {
     assert.ok(!skill.includes(new Date().toISOString().slice(0, 10)), '現在日時などの揮発情報を含めない')
-    assert.doesNotMatch(skill, /read_reference/, 'read_reference は M5 で追加するまで案内しない')
   }
 })

@@ -221,6 +221,11 @@ warnings があっても `ok:true` なら成功（Claude が warnings を読ん�
 | **M6 音声・仕上げ** | `buildContext` / `buildSnapshot` / `look_at_visualization`、「新しい会話」の全消去、CSP 最終確認 | 音声で「このグラフを見て」→ 画像送信後に応答。「新しい会話」で IDB が空。preview で CSP 違反ゼロ |
 
 ### 進捗
+- **M5 完了（2026-08-30）**: `read_reference`（`reference-index.js` は番号の連続性 + 見出しレベルで章を判定、`reference-loader.js` は `?raw` の動的 import →
+  ガイドは初期チャンクに入らず 19〜53KB の別チャンク）/ スキル 5 本（workflow + charts + maps + geojson + raster、合計約 33k 文字。
+  各末尾に `read_reference` 用の目次を置き、`test/reference-index.test.js` が実ファイルの章番号・見出しと突き合わせる）/
+  ヘルプ・About・タイトルの文言 / CLAUDE.md・README・docs の更新 / テスト 123 件。
+  Claude モック E2E で `read_reference`（目次・小節・切り詰め・部分一致）と system への 5 スキル同梱を実測。
 - **M4 完了（2026-08-30）**: `fflate` 追加 / `src/viz/{svg-export,png-export,zip-export,zip-template,download}.js` / App の DL 結線 / `test/viz-export.test.js`（計 117 件）。
   Chromium で実測: SVG（XML 宣言・xmlns・背景つき 3.8KB）/ PNG（2 倍解像度 1440×840）/ ZIP（284KB）をダウンロードし、
   zip を展開して **`file://` で開いて同じ図が描画されることを確認**（d3・turf・データ 6 行が復元、canvas 由来の `<image>` も残る）。

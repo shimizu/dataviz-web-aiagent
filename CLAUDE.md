@@ -4,17 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-**音声（Gemini Live）× ツール実行（Claude）** のブラウザ完結型エージェントの最小シェル。バックエンドを持たず、
-Claude API と Gemini Live API をブラウザから直接呼ぶ。API キーは画面で入力し localStorage に保存する。
-gee-ai-agent からドメイン非依存の骨格だけを切り出したもので、同梱のサンプルツールソース（`tools/example/`: 現在時刻・計算）を
-雛形にドメインを足す。
+**データ可視化エージェント**。ユーザーが csv / tsv / geojson / geotiff をドロップし、チャットか音声で相談しながら
+**Claude が D3 の描画コードを書いて図を作る**。図は隔離 iframe で実行して SVG に落とし、SVG / PNG / ZIP（html + js + css + データ）で
+ダウンロードできる。骨格は voice-agent-shell（音声 Gemini Live × ツール実行 Claude のブラウザ完結型シェル）で、
+バックエンドを持たず、API キーは localStorage、データと可視化は IndexedDB に保存する。設計と進捗は `Plan.md`。
 
 ## コマンド
 
 ```bash
 npm install        # 依存インストール（Node 20+。~/.npmrc の min-release-age に注意）
-npm run dev        # Vite 開発サーバー（http://localhost:5173）
-npm run build      # 本番ビルド（dist/）。CSP meta を注入する
+npm run dev        # Vite 開発サーバー（http://localhost:5173）。predev で viz-runtime を生成
+npm run build      # 本番ビルド（dist/）。CSP meta を注入する。prebuild で viz-runtime を生成
+npm run build:runtime  # public/viz-runtime.js（d3 + geo-projection + geo-polygon + turf + geoWarp の IIFE）だけ作る
 npm run preview    # ビルド結果のプレビュー
 npm run lint       # ESLint（--max-warnings 0）
 npm test           # node --test（ブラウザ非依存の純ロジックのみ）
@@ -22,12 +23,15 @@ npm run deploy     # gh-pages で dist/ を公開（predeploy で build。vite.c
 node --test test/runtime.test.js   # 単一テストファイルの実行
 ```
 
-ESLint は `dist/` を無視する。
+ESLint は `dist/`・`public/viz-runtime.js`（生成物）・`reference/`（参照資料）を無視する。
 
-テストは Node 標準の `node --test`。ブラウザ依存（WebAudio / DOM / WebSocket）に触れない純ロジックだけを対象にする
-（runtime / tool-registry / claude-client / compaction / system-prompt+system-context / voice-tools / voice-instruction /
-gemini-live-tools〔buildLiveTools〕/ voice-pcm / gemini-test / example-tools / analysis-runner〔code-guard・偽 Worker〕/
-javascript-tools）。描画・音声は `npm run dev` での手動確認で担保する。
+テストは Node 標準の `node --test`。ブラウザ依存（WebAudio / DOM / WebSocket / IndexedDB）に触れない純ロジックだけを対象にする
+（シェル由来: runtime / tool-registry / claude-client / compaction / system-prompt+system-context / voice-* / gemini-* /
+example-tools / analysis-runner / javascript-tools。可視化: geo-warp〔raster-paint〕/ viz-frame-bridge〔偽 iframe・偽タイマー〕/
+dataviz-parsers / dataviz-tools / dataviz-viz〔偽 bridge〕/ viz-export〔zip の展開まで〕/ reference-index〔実ガイドの分割と目次一致〕）。
+描画・音声・CSP は `npm run build && npm run preview` を Chromium（Playwright）で叩いて確認する。
+**Claude API は Playwright の `page.route('https://api.anthropic.com/v1/messages')` で tool_use を順に返すモックにできる**
+（キー不要で取り込み → render → update → 書き出しまで E2E が回る。`~/.claude/debug.md` の手順）。
 
 ## アーキテクチャ
 
@@ -87,6 +91,12 @@ javascript-tools）。描画・音声は `npm run dev` での手動確認で担�
 `src/tools/sources.js` の `SOURCES` に 1 行足すだけでツール登録とシステムプロンプトの両方に反映される。
 deps の形は `src/tools/register-tools.js` 先頭のコメント参照（`{ postChatMessage, session, log, ...アプリ固有 }`。シェルは中身を見ない）。
 **ツールは要約だけを LLM に返す**（行データ・地物はアプリ側のストアへ）。例外はそのまま投げる。
+- `dataviz/`（本アプリの本体）: `list_datasets` / `describe_dataset` / `save_dataset`（`dataset-handlers.js`）、
+  `render_visualization` / `update_visualization`（`visualization-handlers.js`: `inspectCode` → bridge へデータセット送信 → 描画 → ストア保存 →
+  `postChatMessage({ kind:'viz' })`。失敗はエラー + スタック 3 行 + console を 1 メッセージにして `is_error`）、
+  `read_reference`（`reference-handlers.js` + `reference-index.js`: `reference/*.md` を `?raw` の動的 import で読み、番号付き見出しで分割）。
+  スキルは `agent/skills/dataviz-{workflow,charts,maps,geojson,raster}.js`（ガイドの要約 + `read_reference` 用の目次。
+  目次はテストが実ファイルと突き合わせる）。
 - `example/`: `get_current_time` / `calculate`（`arithmetic.js` = 再帰下降パーサ。`eval` 不使用なので CSP に `'unsafe-eval'` 不要）。
 - `javascript/`: `execute_javascript`（生成 JS を隔離 Worker で実行。実行基盤は `src/analysis/`）。
   `deps.getDataset(id)` が注入されていれば `datasetId` / `datasetIds` を公開し、無ければ `args` だけのサンドボックスになる
@@ -102,12 +112,35 @@ undefined 化し、`new Function` で `analyze` を取り出して呼ぶ）、`a
 Worker へ API キー・DOM・localStorage は渡さない。
 
 ### データ層（`src/data/`）
-`settings.js` のみ。`STORAGE_PREFIX = 'voice-agent-shell.'` と `storageKey(name)` が localStorage キーの単一情報源
-（設定・会話・チャット表示・ログのキーはすべてここから作る）。
+- `settings.js` — `STORAGE_PREFIX = 'voice-agent-shell.'` と `storageKey(name)` が localStorage キーの単一情報源。
+- `dataviz-db.js` — IndexedDB（DB 名 `storageKey('dataviz')`、ストア `files` / `datasets` / `visualizations`）。使えない環境では黙ってメモリのみ。
+- `record-store.js` — **メモリ優先 + IDB は永続化のみ**の共通ストア（`subscribe / getSnapshot / hydrate / get(同期) / add / update / remove / clear`）。
+  `get` が同期なのは `execute_javascript` の `deps.getDataset` が同期呼び出しのため。起動時に App が `hydrate()`、完了までチャットは無効。
+- `dataset-store.js` / `file-store.js` / `visualization-store.js` — 種別ごとの包み。モジュールスコープの単一インスタンスを App と `agentDeps` が共有する（参照安定）。
+- `dataset-shapes.js` — 保存形 → `toRuntimeDataset()`（Worker / 可視化フレームへ渡す共通形。`metadata` にも geojson / raster 本体を入れる）/
+  `describeDataset()` / `summarizeDataset()` / `formatDatasetList()`（揮発ブロック用）。純関数。
+- `parsers/tabular.js`（**`d3-dsv` は `parse()` でなく `parseRows()`**。`parse()` は `new Function` を使い本番 CSP で落ちる）/
+  `parsers/geojson.js`（診断のみ。座標は自動修正しない）/ `parsers/geotiff.js`（長辺 2048 に間引き。ZSTD / LERC / JPEG は未対応エラー）。
+- `import-files.js` — File[] → 判定 → パース → ストア。上限は CSV 20 万行 / GeoJSON 20MB / GeoTIFF 50MB。
+- `analysis-cache.js` — `execute_javascript` の全行を直近 5 件保持し、`save_dataset({ codeHash })` で派生データセットに昇格。
 
-### App.jsx のドメイン注入点
-`agentDeps`（useMemo）/ `buildSystem`（`contextParts`）/ `voiceExtraTools` / `useVoiceSession` の `buildContext`・`buildSnapshot` /
-`ChatPanel` の `renderMessage` / `Header` の `leftSlot` / `.workspace-main` の中身（地図・キャンバス等）。
+### 可視化層（`src/viz/`・`src/viz-runtime/`・`public/`）
+- 生成コードは **`public/viz-frame.html` を `sandbox="allow-scripts"`（opaque origin）の iframe** で実行する。実ファイルの document は
+  親の meta CSP を継承しないので、frame 自身の CSP（`script-src 'self' 'unsafe-eval'; connect-src 'none'` 等）で `new Function` を
+  許可しつつ外部通信・親の localStorage / DOM を遮断する。**親の `vite.config.js` の CSP は変更しない**（Chromium で実測済み）。
+- `public/viz-runtime.js` は `vite.runtime.config.js` で作る生成物（gitignore）。frame の `<script src>` と zip 同梱で共用。
+- `public/viz-frame.js`（手書き classic script）: データセットを Map にキャッシュ、`render({ container, d3, turf, geoWarp, datasets, width, height, theme })`
+  を呼び、`<svg>` を正規化して文字列と警告・console を返す。メッセージ種別は `src/viz/frame-protocol.js` の写し（テストが突き合わせる）。
+- `src/viz/viz-frame-bridge.js`: ready ハンドシェイク・描画の直列化・タイムアウト時は iframe をリロードして復旧・送信済みデータセットの記録。
+  **iframe は DOM から外すと再読み込み、`display:none` はレイアウト値を壊す**ので、可視化タブが非表示のときは画面外へ退避する。
+- `src/viz/viz-theme.js`（デザイントークン。スキルの表もここから生成）/ `svg-export.js` / `png-export.js`（data: URL → canvas 2x。blob: を使わない）/
+  `zip-template.js` + `zip-export.js`（fflate。`file://` で開ける classic script 構成、CDN 参照なし）/ `download.js`。
+- `src/viz-runtime/geo-warp.js`: ラスタを d3 投影へ逆引き再投影（`raster-paint.js` が純関数部分）。
+
+### App.jsx のドメイン注入点（本アプリでの実体）
+`agentDeps` = `{ datasetStore, visualizationStore, vizBridge, getDataset, onAnalysisResult, getAnalysisResult, onVisualizationShown }`
+（すべてモジュールスコープ or ref 由来で参照安定）/ `buildSystem` の `contextParts` = `formatDatasetList(datasets)` /
+`renderMessage` = `kind:'viz'` → `VizCard` / `.workspace-main` = `DatavizWorkspace`（データ / 可視化タブ）/ 「新しい会話」で全ストア + bridge をクリア。
 
 ## コードスタイル
 プレーン JS/JSX（TypeScript なし）、2 スペース、セミコロン無し、シングルクォート。コンポーネントは `PascalCase.jsx`、
@@ -123,7 +156,11 @@ Worker へ API キー・DOM・localStorage は渡さない。
   メインスレッド側で `new Function` / `eval` を使うなら `'unsafe-eval'` が要る。
   **ライブラリが内部で `new Function` を使うことがある**（例: `d3-dsv` の `parse()`。`parseRows()` なら安全）。
   dev では CSP が効かないので、外部ライブラリを足したら `npm run preview` で必ず確認する。
-- `localStorage` キーは `voice-agent-shell.*`。「新しい会話」で会話・ログを全消去。
+- `localStorage` キーは `voice-agent-shell.*`、IndexedDB は `voice-agent-shell.dataviz`。「新しい会話」で会話・ログ・データ・可視化を全消去。
+- スキル（`agent/skills/*.js`）は決定的な文字列にし、現在日時やデータ一覧を入れない。ガイドの目次を載せるときは番号と見出しを
+  `reference/*.md` と一致させる（`test/reference-index.test.js`）。
+- 可視化フレームに渡す生成コードは `src/analysis/code-guard.js` の `inspectCode` で検査する。フレームは `blob:` を親から読めないので
+  画像は data: URL で埋める。
 - `@google/genai` は `useVoiceSession` の動的 import 経由でのみ読む（初期チャンクに入れない）。
 
 ## 参考

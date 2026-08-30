@@ -402,6 +402,7 @@ function App() {
   return (
     <div className="app-shell" style={shellStyle}>
       <Header
+        title="データ可視化エージェント"
         rightOpen={rightOpen}
         onToggleRight={() => setRightOpen((v) => !v)}
         onShowAbout={() => setAboutOpen(true)}

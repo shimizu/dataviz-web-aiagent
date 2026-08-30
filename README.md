@@ -1,12 +1,20 @@
-# voice-agent-shell
+# データ可視化エージェント
 
-**音声（Gemini Live）× ツール実行（Claude）** のブラウザ完結型エージェントの最小シェル。
-バックエンドを持たず、Claude API と Gemini Live API をブラウザから直接呼びます。API キーは画面で入力し
-localStorage に保存します。
+csv / tsv / geojson / geotiff をブラウザにドロップし、チャットか音声で相談しながら **Claude が D3 で図を作る**
+エージェントです。データの確認 → 提案と質問 → 描画 → 修正を対話で進め、できた図は **SVG / PNG / ZIP**（html + js + css + データ。
+ダブルクリックで開ける）で保存できます。バックエンドは無く、API キーは localStorage、データと図は IndexedDB に保存します。
 
-[gee-ai-agent](https://github.com/shimizu/gee-ai-agent)（Google Earth Engine の分析エージェント）から、
-ドメインに依存しない骨格だけを切り出したものです。同梱のサンプルツール（現在時刻・計算）を差し替えて、
-自分のドメイン（地図・表・IoT・ドキュメント…）のエージェントを作る土台にしてください。
+骨格は [voice-agent-shell](https://github.com/shimizu/gee-ai-agent)（音声 Gemini Live × ツール実行 Claude のブラウザ完結型シェル）。
+設計・進捗は [`Plan.md`](./Plan.md)、参考にした作図ガイドは [`reference/`](./reference/)（エージェントが `read_reference` で参照します）。
+
+## できること
+
+- **取り込み**: 「データ」タブに複数ファイルをドロップ。列の型推定・統計、GeoJSON の描画前診断、GeoTIFF の間引き読み込み。
+- **対話**: 「売上の推移を折れ線で」→ Claude が `describe_dataset` で中身を読み、足りないことを質問し、
+  `render_visualization` に D3 コードを渡して描く。「色を変えて」は `update_visualization` で新バージョンに。
+- **安全な実行**: 生成コードは `sandbox="allow-scripts"` の隔離 iframe（自前 CSP、外部通信・親の localStorage 遮断）で動く。
+- **書き出し**: SVG（単体で開ける）/ PNG（2 倍解像度）/ ZIP（`file://` でそのまま動く html + js + css + データ + ライブラリ）。
+- **音声**（任意）: Gemini Live に相談すると指示文を作って Claude に依頼、完了を読み上げ。
 
 ## 仕組み — 2 つの LLM の役割分担
 
@@ -36,14 +44,17 @@ npm run dev        # http://localhost:5173
 ```
 
 1. ヘッダー右の ⚙ 設定に **Claude API キー**（必須）を入れ、「接続テスト」→「保存して閉じる」。
-2. チャットに「(12.5 + 3) × 4 を計算して」「ニューヨークは今何時？」と入力すると、Claude がサンプルツールを呼んで答えます。
-3. 音声で相談するには **Gemini API キー**（任意）を入れ、入力欄横の 🎙 を押して話しかけます。
-   Gemini が要件を聞き取り、`run_prompt` で Claude を実行し、完了を読み上げます。
+2. 左の「データ」タブに csv / tsv / geojson / geotiff をドロップ（複数可）。列の型や地物の診断がその場で見えます。
+3. チャットに「都市別の売上推移を折れ線で」と入力。Claude がデータを読んで図を描き、「可視化」タブに表示します。
+   「注目したい系列だけ青に」「2024 年以降に絞って」のように直せます。
+4. 「可視化」タブの SVG / PNG / ZIP ボタンで保存。ZIP は展開して `index.html` を開けば同じ図が動きます。
+5. 音声で相談するには **Gemini API キー**（任意）を入れ、入力欄横の 🎙 を押して話しかけます。
 
 | コマンド | 内容 |
 |---|---|
-| `npm run dev` | 開発サーバー |
-| `npm run build` | 本番ビルド（`dist/`。CSP meta を注入） |
+| `npm run dev` | 開発サーバー（`predev` で `public/viz-runtime.js` を生成） |
+| `npm run build` | 本番ビルド（`dist/`。CSP meta を注入。`prebuild` で viz-runtime を生成） |
+| `npm run build:runtime` | 可視化ランタイム（d3 + turf + geoWarp の IIFE）だけを生成 |
 | `npm run preview` | ビルド結果のプレビュー（CSP 有効） |
 | `npm run lint` | ESLint（警告 0） |
 | `npm test` | `node --test`（ブラウザ非依存の純ロジック） |
@@ -58,22 +69,30 @@ npm run dev        # http://localhost:5173
 ## 構成
 
 ```
+public/
+  viz-frame.html/.js   可視化フレーム（隔離 iframe。生成コードを new Function で実行し SVG 文字列を返す）
+  viz-runtime.js       生成物（npm run build:runtime）。d3 + d3-geo-projection + d3-geo-polygon + turf + geoWarp
+reference/             作図ガイド 4 本（スキルの要約元。read_reference が節単位で読む）
 src/
-  App.jsx              唯一の結線点（ドメイン注入点はここ）
+  App.jsx              唯一の結線点（ストア・bridge・ツール deps・表示の結線）
   agent/               Claude: runtime（tool use ループ）/ claude-client / tool-registry / compaction /
                        conversation-store / system-prompt（BASE + スキル）/ system-context（揮発ブロック）
-    skills/example.js  サンプルスキル（Markdown）
+    skills/dataviz-*.js  進め方 + render 契約 / チャート / 地図 / GeoJSON 診断 / ラスタ（ガイドの要約）
+  viz/                 frame-protocol / viz-frame-bridge（親側）/ viz-theme / svg・png・zip の書き出し / download
+  viz-runtime/         geo-warp（ラスタの逆引き再投影）/ raster-paint（純関数）/ index（グローバル登録エントリ）
+  data/                dataviz-db（IndexedDB）/ record-store / dataset・file・visualization-store / parsers（tabular・geojson・geotiff）/
+                       import-files / dataset-shapes / analysis-cache / settings
   voice/               Gemini Live: gemini-live-client / voice-tools（run_prompt）/ voice-instruction /
                        audio-capture（16kHz worklet）/ audio-player（24kHz）/ pcm / voice-options / gemini-test
   analysis/            生成 JS の隔離実行: code-guard（実行前検査）/ analysis-worker（使い捨て Worker）/
                        analysis-runner（タイムアウト・入出力上限・terminate）
   hooks/               useSettings / useAgentSession / useVoiceSession / useVisualViewport
-  tools/               sources.js（ソース一覧）/ register-tools.js / example/（サンプル: 時刻・計算）/
-                       javascript/（execute_javascript: 生成 JS を隔離 Worker で実行）
-  components/          表示と入力のみ（Header / Sidebar / TabbedPanel / ChatPanel / VoiceButton / ExecutionLog /
-                       ApiSettings / AboutModal / AgentHelpModal）
-  data/settings.js     localStorage のキー（接頭辞 voice-agent-shell.）と既定値
-test/                  node --test
+  tools/               sources.js（ソース一覧）/ register-tools.js /
+                       dataviz/（list・describe・save_dataset / render・update_visualization / read_reference）/
+                       example/（時刻・計算）/ javascript/（execute_javascript: 生成 JS を隔離 Worker で実行）
+  components/          表示と入力のみ（dataviz/: DatavizWorkspace・DropZone・DatasetList・DatasetPreview・VizPanel・VizCard /
+                       Header / Sidebar / TabbedPanel / ChatPanel / VoiceButton / ExecutionLog / ApiSettings / AboutModal / AgentHelpModal）
+test/                  node --test（純ロジック。ブラウザは Playwright + Claude API モックで確認）
 ```
 
 ## ツールソースの契約

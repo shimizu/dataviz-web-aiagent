@@ -65,7 +65,7 @@ flowchart TB
 - 音声からの `runPrompt` は `runPromptFromVoice` でラップし、チャットタブと右パネルを開いてから `handleSubmit` する。
 - `handleNewConversation` = `handleAbort()` + `handleResetChat()` + ログ消去。
 
-### ドメイン注入点（シェルでは空）
+### ドメイン注入点（本アプリでは可視化ドメインが埋めている。実体は `src/App.jsx`）
 
 | 注入点 | 型 | 用途 |
 |---|---|---|
@@ -76,6 +76,10 @@ flowchart TB
 | `ChatPanel` の `renderMessage` | `(message) => ReactNode \| null` | 独自 `kind` のメッセージ描画（チャートカード等） |
 | `Header` の `leftSlot` | ReactNode | 認証バッジなど |
 | `.workspace-main` の中身 | JSX | 地図・キャンバス・表などの主画面 |
+
+本アプリでの実体: `agentDeps = { datasetStore, visualizationStore, vizBridge, getDataset, onAnalysisResult, getAnalysisResult, onVisualizationShown }`、
+`contextParts = [formatDatasetList(datasets)]`、`renderMessage` は `kind:'viz'` → `VizCard`、`.workspace-main` は `DatavizWorkspace`。
+可視化フレーム（`public/viz-frame.html`）は `createVizFrameBridge` を `useRef` で 1 度だけ作り、iframe 要素を `VizPanel` が DOM に載せる。
 
 詳しい手順は [extending.md](./extending.md)。
 
@@ -111,7 +115,14 @@ flowchart TB
 | `notice` | 中断・拒否・エラー | 注意色 |
 | 任意（例: `chart`） | ツールからの `postChatMessage({ kind, ... })` | `renderMessage(message)` が非 null を返せばそれを描画 |
 
-## localStorage
+## 永続化（localStorage と IndexedDB）
+
+アップロードしたデータ（原本とパース済み）と作成した可視化（コード + SVG のバージョン列）は **IndexedDB**
+（DB 名 `voice-agent-shell.dataviz`、ストア `files` / `datasets` / `visualizations`。`src/data/dataviz-db.js`）に入れる。
+ストアはメモリ優先で、IDB は書き込みの後追い（`src/data/record-store.js`）。起動時に `hydrate()` で復元し、
+「新しい会話」で 3 ストアとも消す。localStorage は設定・会話・チャット表示・ログのまま。
+
+### localStorage
 
 `src/data/settings.js` の `STORAGE_PREFIX = 'voice-agent-shell.'` と `storageKey(name)` が唯一の情報源。
 

@@ -4,7 +4,10 @@
 `src/App.jsx`, `src/components/AgentHelpModal.jsx`, `src/components/AboutModal.jsx`, `test/example-tools.test.js`
 
 このシェルは「ドメイン非依存の骨格」なので、自分のドメイン（地図・表・IoT・ドキュメント…）は次の順で足す。
-同梱の `example` ソース（現在時刻・計算）が雛形。
+同梱の `example` ソース（現在時刻・計算）が雛形。**本アプリではデータ可視化ドメイン（`src/tools/dataviz/`・`src/data/`・
+`src/viz/`・`src/components/dataviz/`）がこの手順どおりに実装されている**ので、実例としてそちらも読む
+（ストアをモジュールスコープに置いて `agentDeps` を参照安定にする、`contextParts` にデータ一覧、`renderMessage` に `kind:'viz'`、
+`execute_javascript` の `onAnalysisResult` フックで派生データを保存、など）。
 
 ```mermaid
 flowchart LR

@@ -6,17 +6,17 @@ function AboutModal({ onClose }) {
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal about-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>🎙 voice-agent-shell</h3>
+        <h3>📊 データ可視化エージェント</h3>
         <p className="about-lead">
-          ブラウザだけで動く「音声 × ツール実行」エージェントの最小シェルです。2 つの LLM を役割分担させています:
-          <b>Claude</b> がツールを使って実際の処理を行い、<b>Gemini Live</b> が音声でユーザーと会話して
-          Claude への指示文を作り、実行を依頼します。
+          csv / tsv / geojson / geotiff をドロップし、チャットか音声で相談しながら、<b>Claude</b> が D3 で図を作ります。
+          データの確認 → 提案と質問 → 描画 → 修正、を対話で進め、できた図は SVG / PNG / ZIP（html + js + css + データ）で保存できます。
         </p>
         <ul className="about-list">
-          <li>🤖 日本語で指示 → Claude がツール（同梱サンプル: 現在時刻・計算）を呼んで回答</li>
-          <li>🎙 マイクで相談 → Gemini が要件を整理して run_prompt で Claude を実行、完了を読み上げ</li>
-          <li>🧩 ツールソース（src/tools/*）を足すだけで、ツール登録とシステムプロンプトの両方に反映</li>
-          <li>🔒 バックエンド無し。API キーはこのブラウザの localStorage にだけ保存</li>
+          <li>📁 左の「データ」タブにファイルをドロップ（複数可）。列の型や地物の診断をその場で確認</li>
+          <li>💬 「売上の推移を折れ線で」と頼むと、Claude がデータを読んで図を描き、「可視化」タブに表示</li>
+          <li>🎙 マイクで相談 → Gemini が要件を整理して Claude に依頼、完了を読み上げ（任意）</li>
+          <li>💾 SVG / PNG / ZIP でダウンロード。ZIP はブラウザで開けば同じ図が動く</li>
+          <li>🔒 バックエンド無し。データと API キーはこのブラウザの中にだけ保存（「新しい会話」で全消去）</li>
         </ul>
         <p className="about-start">
           必要な設定（ヘッダー右の ⚙）: Claude API キー（必須）。音声で相談するには Gemini API キー（任意）も入れてください。

@@ -8,6 +8,7 @@ export const DESCRIBE_DATASET = 'describe_dataset'
 export const SAVE_DATASET = 'save_dataset'
 export const RENDER_VISUALIZATION = 'render_visualization'
 export const UPDATE_VISUALIZATION = 'update_visualization'
+export const READ_REFERENCE = 'read_reference'
 
 const CODE_DESCRIPTION =
   'function render({ container, d3, turf, geoWarp, datasets, width, height, theme }) を定義する JavaScript。' +
@@ -96,6 +97,22 @@ export const DATAVIZ_TOOL_DEFINITIONS = [
         changeNote: { type: 'string', description: '何を変えたか 1 行' },
       },
       required: ['vizId', 'code'],
+    },
+  },
+  {
+    name: READ_REFERENCE,
+    description:
+      '作図ガイド（D3 のチャート / 地図 / GeoJSON の診断 / ラスタ）の詳細を節ごとに読む。スキルの要約で足りないとき、' +
+      '具体的なコード例や判断基準を確認したいときに使う。section を省略すると目次（番号と見出し）が返る。' +
+      'section には節番号（例: "6.3"）か見出しの一部を指定する。本文は maxChars で切り詰められる。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', enum: ['dataviz', 'maps', 'geojson', 'raster'], description: 'ガイドの種類' },
+        section: { type: 'string', description: '節番号（"4.2" など）か見出しの一部。省略で目次' },
+        maxChars: { type: 'integer', description: '本文の最大文字数（既定 7000）' },
+      },
+      required: ['topic'],
     },
   },
 ]
