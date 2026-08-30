@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      可視化フレーム（隔離 iframe）。親から sandbox="allow-scripts"（allow-same-origin 無し = opaque origin）で読まれる。
+      実ファイルの document は親の meta CSP を継承しないので、ここで自前の CSP を宣言する:
+      - script-src 'self' 'unsafe-eval': viz-runtime.js / viz-frame.js と、生成コードの new Function
+      - connect-src 'none': 生成コードからの外部通信を遮断（fetch / XHR / WebSocket）
+      - img-src data: blob:: ラスタを canvas → data URL で <image> に埋める
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>viz-frame</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        color: #111827;
+        font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+      }
+      #viz {
+        display: block;
+        overflow: auto;
+      }
+      #viz svg {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viz"></div>
+    <script src="./viz-runtime.js"></script>
+    <script src="./viz-frame.js"></script>
+  </body>
+</html>

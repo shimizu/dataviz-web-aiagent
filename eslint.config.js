@@ -8,8 +8,8 @@ import { defineConfig } from 'eslint/config'
 
 export default defineConfig([
   {
-    // dist（ビルド成果物）は lint 対象外。
-    ignores: ['dist'],
+    // dist（ビルド成果物）・viz-runtime.js（build:runtime の生成物）・reference/（参照資料）は lint 対象外。
+    ignores: ['dist', 'public/viz-runtime.js', 'reference'],
   },
   {
     // AudioWorklet は window の無い専用スコープで動くため、グローバルを個別に宣言する。
@@ -69,6 +69,14 @@ export default defineConfig([
     rules: {
       '@eslint-react/dom-no-unsafe-target-blank': 'off',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  {
+    // 可視化フレーム側のブリッジは classic script（import 無し）。viz-runtime.js が window に載せるグローバルを宣言する。
+    files: ['public/viz-frame.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: { XMLSerializer: 'readonly', Map: 'readonly', Promise: 'readonly' },
     },
   },
 ])

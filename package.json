@@ -5,8 +5,11 @@
   "type": "module",
   "description": "Claude（ツール実行）と Gemini Live（音声）を組み合わせた、ブラウザ完結型エージェントの最小シェル",
   "scripts": {
+    "predev": "npm run build:runtime",
     "dev": "vite",
+    "prebuild": "npm run build:runtime",
     "build": "vite build",
+    "build:runtime": "vite build -c vite.runtime.config.js",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
