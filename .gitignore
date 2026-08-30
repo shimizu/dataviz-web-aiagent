@@ -1,0 +1,14 @@
+# 依存・ビルド成果物
+node_modules/
+dist/
+
+# ログ・OS・エディタ
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
+
+# 環境変数（このアプリは使わないが念のため）
+.env
+.env.*

@@ -1,0 +1,34 @@
+{
+  "name": "voice-agent-shell",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Claude（ツール実行）と Gemini Live（音声）を組み合わせた、ブラウザ完結型エージェントの最小シェル",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@google/genai": "^2.17.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@eslint-react/eslint-plugin": "^5.9.0",
+    "@eslint/js": "^10.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "eslint": "^10.5.0",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "gh-pages": "^6.3.0",
+    "vite": "^8.0.0"
+  }
+}

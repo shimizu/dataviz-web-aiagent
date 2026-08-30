@@ -1,0 +1,74 @@
+// ESLint 設定（flat config）。
+// React + React Refresh のルールを適用し、ブラウザ/エージェント層で使うグローバルを宣言する。
+// 流用元: gee-ai-agent/eslint.config.js
+import eslintReact from '@eslint-react/eslint-plugin'
+import eslint from '@eslint/js'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import { defineConfig } from 'eslint/config'
+
+export default defineConfig([
+  {
+    // dist（ビルド成果物）は lint 対象外。
+    ignores: ['dist'],
+  },
+  {
+    // AudioWorklet は window の無い専用スコープで動くため、グローバルを個別に宣言する。
+    files: ['src/voice/pcm-worklet.js'],
+    languageOptions: { globals: { AudioWorkletProcessor: 'readonly', registerProcessor: 'readonly', sampleRate: 'readonly' } },
+  },
+  {
+    // 生成コードを実行する Worker は window の無い専用スコープで動く。
+    files: ['src/analysis/analysis-worker.js'],
+    languageOptions: { globals: { self: 'readonly' } },
+  },
+  {
+    files: ['**/*.{js,jsx}'],
+    extends: [eslint.configs.recommended, eslintReact.configs.recommended, reactRefresh.configs.vite],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      parserOptions: { ecmaFeatures: { jsx: true } },
+      globals: {
+        document: 'readonly',
+        window: 'readonly',
+        navigator: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        Blob: 'readonly',
+        File: 'readonly',
+        TextDecoder: 'readonly',
+        TextEncoder: 'readonly',
+        fetch: 'readonly',
+        Headers: 'readonly',
+        Response: 'readonly',
+        console: 'readonly',
+        localStorage: 'readonly',
+        indexedDB: 'readonly',
+        crypto: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        requestAnimationFrame: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        DOMException: 'readonly',
+        globalThis: 'readonly',
+        performance: 'readonly',
+        createImageBitmap: 'readonly',
+        ImageData: 'readonly',
+        HTMLDialogElement: 'readonly',
+        getComputedStyle: 'readonly',
+        AudioContext: 'readonly',
+        AudioWorkletNode: 'readonly',
+        Worker: 'readonly',
+        btoa: 'readonly',
+        atob: 'readonly',
+      },
+    },
+    rules: {
+      '@eslint-react/dom-no-unsafe-target-blank': 'off',
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+])
