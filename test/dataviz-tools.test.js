@@ -173,9 +173,10 @@ const registerDataviz = (deps) => {
   return registry
 }
 
-test('dataviz ソースは 3 ツールを登録し、スキルを 1 つ持つ', () => {
+test('dataviz ソースはデータセット系 3 ツールを含み、進め方スキルを先頭に持つ', () => {
   const registry = registerDataviz({ datasetStore: memoryStore() })
-  assert.deepEqual(registry.definitions().map((d) => d.name).sort(), ['describe_dataset', 'list_datasets', 'save_dataset'])
+  const names = registry.definitions().map((d) => d.name)
+  for (const name of ['describe_dataset', 'list_datasets', 'save_dataset']) assert.ok(names.includes(name), name)
   assert.ok(datavizSource.skills[0].startsWith('# スキル: データ可視化の進め方'))
 })
 

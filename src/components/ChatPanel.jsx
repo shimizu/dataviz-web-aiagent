@@ -48,7 +48,7 @@ function ChatPanel({
   }
 
   const handleReset = () => {
-    if (!window.confirm('新しい会話を始めると、会話とログがすべて消去されます。よろしいですか？')) return
+    if (!window.confirm('新しい会話を始めると、会話・ログ・読み込んだデータ・作成した可視化がすべて消去されます。よろしいですか？')) return
     lastSubmittedRef.current = ''
     onReset()
   }

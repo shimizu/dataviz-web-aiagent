@@ -19,12 +19,17 @@ import { SOURCES } from './tools/sources.js'
 import { loadSetting, saveSetting, SETTINGS_KEYS, storageKey } from './data/settings.js'
 import { datasetStore } from './data/dataset-store.js'
 import { fileStore } from './data/file-store.js'
+import { visualizationStore } from './data/visualization-store.js'
 import { analysisCache } from './data/analysis-cache.js'
 import { importFiles } from './data/import-files.js'
 import { formatDatasetList } from './data/dataset-shapes.js'
+import { createVizFrameBridge } from './viz/viz-frame-bridge.js'
+import { VIZ_FRAME_PATH } from './viz/frame-protocol.js'
+import { VIZ_THEME } from './viz/viz-theme.js'
 import { uuid } from './utils/ids.js'
 
 import DatavizWorkspace from './components/dataviz/DatavizWorkspace'
+import VizCard from './components/dataviz/VizCard'
 import Header from './components/Header'
 import ApiSettings from './components/ApiSettings'
 import Sidebar from './components/Sidebar'
@@ -40,7 +45,9 @@ const LOG_STORAGE = storageKey('operation-log')
 // 安定プレフィックス（BASE + 全ソースのスキル）。プロンプトキャッシュの対象なので揮発情報を混ぜない。
 const SYSTEM_PROMPT = composeSystemPrompt({ skills: SOURCES.flatMap((s) => s.skills ?? []) })
 // ストアはモジュールスコープに 1 つだけ置く（agentDeps を参照安定にして registry を作り直さないため）。
-const DATAVIZ_STORES = [datasetStore, fileStore]
+const DATAVIZ_STORES = [datasetStore, fileStore, visualizationStore]
+// 可視化フレーム（隔離 iframe）の URL。base './' でも相対で解決できる。
+const VIZ_FRAME_SRC = `${import.meta.env.BASE_URL}${VIZ_FRAME_PATH}`
 
 function loadLogs() {
   try {
@@ -77,6 +84,7 @@ function App() {
   useHydrateOnce(DATAVIZ_STORES)
   const datasets = useStoreItems(datasetStore)
   const datasetsHydrated = useHydrated(datasetStore)
+  const visualizations = useStoreItems(visualizationStore)
   const [importBusy, setImportBusy] = useState(false)
   const [importErrors, setImportErrors] = useState([])
 
@@ -103,18 +111,85 @@ function App() {
     [log],
   )
 
+  // --- 可視化フレーム（隔離 iframe）---
+  // bridge は 1 度だけ作る（iframe を作り直すと読み込みからやり直しになる）。
+  const bridgeRef = useRef(null)
+  if (!bridgeRef.current) bridgeRef.current = createVizFrameBridge({ src: VIZ_FRAME_SRC, log })
+  const vizBridge = bridgeRef.current
+  const [frameReady, setFrameReady] = useState(false)
+  useEffect(() => {
+    let alive = true
+    vizBridge
+      .ready()
+      .then(() => alive && setFrameReady(true))
+      .catch((e) => alive && log(`✗ ${e.message}`))
+    return () => {
+      alive = false
+    }
+  }, [vizBridge, log])
+
+  const [workspaceTab, setWorkspaceTab] = useState('data')
+  const [currentViz, setCurrentViz] = useState(null) // { vizId, version }
+  // フレームに今描かれているもの（同じものを選び直したときに再描画しない）。
+  const shownRef = useRef(null)
+
+  // 保存済みのバージョンをフレームに描き直す（バージョン切替・カードからの表示）。
+  const displayVersion = useCallback(
+    async (vizId, version) => {
+      const viz = visualizationStore.get(vizId)
+      const target = visualizationStore.getVersion(vizId, version)
+      if (!viz || !target) return
+      setCurrentViz({ vizId, version: target.version })
+      setWorkspaceTab('viz')
+      const key = `${vizId}:${target.version}`
+      if (shownRef.current === key) return
+      shownRef.current = key
+      try {
+        for (const id of viz.datasetIds) {
+          const runtime = datasetStore.getRuntime(id)
+          if (runtime) await vizBridge.putDataset(runtime)
+        }
+        await vizBridge.render({ code: target.code, datasetIds: viz.datasetIds, width: target.width, height: target.height, theme: VIZ_THEME })
+      } catch (e) {
+        shownRef.current = null
+        log(`✗ 再描画に失敗: ${e.message}`)
+      }
+    },
+    [vizBridge, log],
+  )
+  // ツールが描画した直後の通知（フレームには描画済みなので再描画しない）。
+  const handleVisualizationShown = useCallback((vizId) => {
+    const viz = visualizationStore.get(vizId)
+    if (!viz) return
+    shownRef.current = `${vizId}:${viz.currentVersion}`
+    setCurrentViz({ vizId, version: viz.currentVersion })
+    setWorkspaceTab('viz')
+  }, [])
+  const shownCallbackRef = useRef(handleVisualizationShown)
+  useEffect(() => {
+    shownCallbackRef.current = handleVisualizationShown
+  }, [handleVisualizationShown])
+
+  // 書き出し（SVG / PNG / ZIP）は次の段階で実装する。
+  const [downloading] = useState(false)
+  const handleDownload = useCallback((kind) => log(`書き出し（${kind}）はまだ実装されていません`), [log])
+
   // --- ドメイン注入点 ---
-  // ツールソースへ渡す依存。すべてモジュールスコープのストア由来なので参照安定（registry のメモ化キー）。
+  // ツールソースへ渡す依存。すべてモジュールスコープのストア / ref 由来なので参照安定（registry のメモ化キー）。
   const agentDeps = useMemo(
     () => ({
       datasetStore,
+      visualizationStore,
+      vizBridge,
       // execute_javascript がデータセットを読む口（同期）。
       getDataset: (id) => datasetStore.getRuntime(id),
       // JS 実行の全行を保持して save_dataset で昇格できるようにする。
       onAnalysisResult: (result) => analysisCache.put(result),
       getAnalysisResult: (codeHash) => analysisCache.get(codeHash),
+      // 描画後に可視化タブへ切り替える。
+      onVisualizationShown: (vizId) => shownCallbackRef.current?.(vizId),
     }),
-    [],
+    [vizBridge],
   )
   // 毎ターンの system。揮発情報（現在の状態）は contextParts に文字列 / 関数で足す。
   const buildSystem = useCallback(
@@ -180,9 +255,26 @@ function App() {
     setLogs([])
     datasetStore.clear()
     fileStore.clear()
+    visualizationStore.clear()
     analysisCache.clear()
+    vizBridge.clear()
+    shownRef.current = null
+    setCurrentViz(null)
     setImportErrors([])
-  }, [handleAbort, handleResetChat])
+    setWorkspaceTab('data')
+  }, [handleAbort, handleResetChat, vizBridge])
+
+  // チャットの可視化カード（kind: 'viz'）。SVG はストアから引く（メッセージには ID だけ持たせる）。
+  const renderMessage = useCallback(
+    (message) => {
+      if (message.kind !== 'viz') return null
+      const version = visualizationStore.getVersion(message.vizId, message.version)
+      return <VizCard vizId={message.vizId} version={message.version} title={message.title} svg={version?.svg ?? null} onShow={displayVersion} />
+    },
+    // visualizations の変化（復元・削除）でカードを描き直す。
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    [displayVersion, visualizations],
+  )
 
   // --- About / パネル ---
   const [aboutOpen, setAboutOpen] = useState(() => !loadSetting(SETTINGS_KEYS.introSeen))
@@ -215,6 +307,7 @@ function App() {
             onSubmit={handleSubmit}
             onAbort={handleAbort}
             onReset={handleNewConversation}
+            renderMessage={renderMessage}
             voiceSlot={
               <VoiceButton
                 state={voiceState}
@@ -243,6 +336,7 @@ function App() {
       handleSubmit,
       handleAbort,
       handleNewConversation,
+      renderMessage,
       voiceState,
       voiceTranscript,
       voiceError,
@@ -277,12 +371,22 @@ function App() {
       <div className="workspace">
         <main className="workspace-main">
           <DatavizWorkspace
+            activeTab={workspaceTab}
+            onTabChange={setWorkspaceTab}
             datasets={datasets}
             hydrated={datasetsHydrated}
             busy={importBusy}
             errors={importErrors}
             onFiles={handleFiles}
             onRemoveDataset={handleRemoveDataset}
+            visualizations={visualizations}
+            currentViz={currentViz}
+            frameElement={vizBridge.element}
+            frameReady={frameReady}
+            downloading={downloading}
+            onSelectViz={(vizId) => displayVersion(vizId)}
+            onSelectVizVersion={displayVersion}
+            onDownload={handleDownload}
           />
         </main>
         <Sidebar

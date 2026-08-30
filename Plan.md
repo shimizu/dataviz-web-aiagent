@@ -221,6 +221,12 @@ warnings があっても `ok:true` なら成功（Claude が warnings を読ん�
 | **M6 音声・仕上げ** | `buildContext` / `buildSnapshot` / `look_at_visualization`、「新しい会話」の全消去、CSP 最終確認 | 音声で「このグラフを見て」→ 画像送信後に応答。「新しい会話」で IDB が空。preview で CSP 違反ゼロ |
 
 ### 進捗
+- **M3 完了（2026-08-30）**: `src/data/visualization-store.js` / `src/tools/dataviz/visualization-handlers.js`（render / update）/
+  `src/agent/skills/dataviz-workflow.js`（render 契約・雛形・theme 表を追加）/ `src/agent/skills/dataviz-charts.js`（チャート作法の要約）/
+  `src/components/dataviz/{VizPanel,VizCard}.jsx` / DatavizWorkspace のタブ制御（iframe を常時マウント、非表示は画面外退避）/ App 結線 / テスト（105 件）。
+  Claude API を Playwright の `page.route` でモックした E2E（本番ビルド）で実測: list → describe → render（折れ線）→ カード投稿 →
+  可視化タブへ自動切替 → update（横棒 v2）→ バージョン切替で v1 を再描画 → IndexedDB に 2 バージョン保存 → system の揮発ブロックに一覧同梱。
+  **モック E2E の作法**: `scratchpad/check-viz.cjs`（`page.route('https://api.anthropic.com/v1/messages')` で tool_use を順に返す）。
 - **M2 完了（2026-08-30）**: `src/data/{dataviz-db,record-store,dataset-store,file-store,analysis-cache,import-files,dataset-shapes}.js` /
   `src/data/parsers/{tabular,geojson,geotiff}.js` / `src/hooks/useDatavizStores.js` / `src/components/dataviz/{DatavizWorkspace,DropZone,DatasetList,DatasetPreview}.jsx` /
   `src/tools/dataviz/{index,definitions,dataset-handlers}.js` / `src/agent/skills/dataviz-workflow.js` / App.jsx 結線 / テスト 2 本（96 件）。
