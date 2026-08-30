@@ -221,6 +221,11 @@ warnings があっても `ok:true` なら成功（Claude が warnings を読ん�
 | **M6 音声・仕上げ** | `buildContext` / `buildSnapshot` / `look_at_visualization`、「新しい会話」の全消去、CSP 最終確認 | 音声で「このグラフを見て」→ 画像送信後に応答。「新しい会話」で IDB が空。preview で CSP 違反ゼロ |
 
 ### 進捗
+- **M4 完了（2026-08-30）**: `fflate` 追加 / `src/viz/{svg-export,png-export,zip-export,zip-template,download}.js` / App の DL 結線 / `test/viz-export.test.js`（計 117 件）。
+  Chromium で実測: SVG（XML 宣言・xmlns・背景つき 3.8KB）/ PNG（2 倍解像度 1440×840）/ ZIP（284KB）をダウンロードし、
+  zip を展開して **`file://` で開いて同じ図が描画されることを確認**（d3・turf・データ 6 行が復元、canvas 由来の `<image>` も残る）。
+  zip の中身: `index.html` / `viz.js` / `style.css` / `viz-runtime.js` / `data/datasets.js` / `data/<元ファイル>` / `viz.svg` / `README.txt`。
+  ダウンロード（`URL.createObjectURL` + `<a download>`）は本番 CSP でも動く。
 - **M3 完了（2026-08-30）**: `src/data/visualization-store.js` / `src/tools/dataviz/visualization-handlers.js`（render / update）/
   `src/agent/skills/dataviz-workflow.js`（render 契約・雛形・theme 表を追加）/ `src/agent/skills/dataviz-charts.js`（チャート作法の要約）/
   `src/components/dataviz/{VizPanel,VizCard}.jsx` / DatavizWorkspace のタブ制御（iframe を常時マウント、非表示は画面外退避）/ App 結線 / テスト（105 件）。

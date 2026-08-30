@@ -55,6 +55,7 @@ export default defineConfig([
         DOMException: 'readonly',
         globalThis: 'readonly',
         structuredClone: 'readonly',
+        Image: 'readonly',
         performance: 'readonly',
         createImageBitmap: 'readonly',
         ImageData: 'readonly',

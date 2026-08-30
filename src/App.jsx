@@ -24,8 +24,12 @@ import { analysisCache } from './data/analysis-cache.js'
 import { importFiles } from './data/import-files.js'
 import { formatDatasetList } from './data/dataset-shapes.js'
 import { createVizFrameBridge } from './viz/viz-frame-bridge.js'
-import { VIZ_FRAME_PATH } from './viz/frame-protocol.js'
+import { VIZ_FRAME_PATH, VIZ_RUNTIME_PATH } from './viz/frame-protocol.js'
 import { VIZ_THEME } from './viz/viz-theme.js'
+import { svgToBlob, toFileName } from './viz/svg-export.js'
+import { svgToPngBlob } from './viz/png-export.js'
+import { buildZipFiles, createZipBlob, zipFileName } from './viz/zip-export.js'
+import { downloadBlob } from './viz/download.js'
 import { uuid } from './utils/ids.js'
 
 import DatavizWorkspace from './components/dataviz/DatavizWorkspace'
@@ -48,6 +52,17 @@ const SYSTEM_PROMPT = composeSystemPrompt({ skills: SOURCES.flatMap((s) => s.ski
 const DATAVIZ_STORES = [datasetStore, fileStore, visualizationStore]
 // 可視化フレーム（隔離 iframe）の URL。base './' でも相対で解決できる。
 const VIZ_FRAME_SRC = `${import.meta.env.BASE_URL}${VIZ_FRAME_PATH}`
+const VIZ_RUNTIME_SRC = `${import.meta.env.BASE_URL}${VIZ_RUNTIME_PATH}`
+
+// zip 同梱用にライブラリ本体を取ってくる（同一オリジンなので connect-src 'self' で通る）。1 度だけ。
+let runtimeSourcePromise = null
+function loadRuntimeSource() {
+  runtimeSourcePromise ??= fetch(VIZ_RUNTIME_SRC).then((r) => {
+    if (!r.ok) throw new Error(`viz-runtime.js を読み込めませんでした（${r.status}）`)
+    return r.text()
+  })
+  return runtimeSourcePromise
+}
 
 function loadLogs() {
   try {
@@ -170,9 +185,45 @@ function App() {
     shownCallbackRef.current = handleVisualizationShown
   }, [handleVisualizationShown])
 
-  // 書き出し（SVG / PNG / ZIP）は次の段階で実装する。
-  const [downloading] = useState(false)
-  const handleDownload = useCallback((kind) => log(`書き出し（${kind}）はまだ実装されていません`), [log])
+  // --- 書き出し（SVG / PNG / ZIP）---
+  const [downloading, setDownloading] = useState(false)
+  const handleDownload = useCallback(
+    async (kind) => {
+      const target = currentViz
+      const viz = target ? visualizationStore.get(target.vizId) : null
+      const version = viz ? visualizationStore.getVersion(viz.id, target.version) : null
+      if (!viz || !version) {
+        log('✗ 書き出す可視化がありません')
+        return
+      }
+      setDownloading(true)
+      try {
+        const label = `${viz.title}_v${version.version}`
+        if (kind === 'svg') {
+          downloadBlob(svgToBlob(version.svg, { width: version.width, height: version.height }), toFileName(label, 'svg'))
+        } else if (kind === 'png') {
+          const blob = await svgToPngBlob(version.svg, { width: version.width, height: version.height })
+          downloadBlob(blob, toFileName(label, 'png'))
+        } else {
+          const runtimeSource = await loadRuntimeSource()
+          const datasets = viz.datasetIds.map((id) => datasetStore.getRuntime(id)).filter(Boolean)
+          const originals = viz.datasetIds
+            .map((id) => datasetStore.get(id)?.sourceFileId)
+            .filter(Boolean)
+            .map((fileId) => fileStore.get(fileId))
+            .filter(Boolean)
+          const files = buildZipFiles({ viz, version, datasets, originals, runtimeSource, theme: VIZ_THEME })
+          downloadBlob(await createZipBlob(files), zipFileName(label))
+        }
+        log(`💾 ${viz.id} v${version.version} を ${kind.toUpperCase()} で書き出しました`)
+      } catch (e) {
+        log(`✗ 書き出しに失敗: ${e.message}`)
+      } finally {
+        setDownloading(false)
+      }
+    },
+    [currentViz, log],
+  )
 
   // --- ドメイン注入点 ---
   // ツールソースへ渡す依存。すべてモジュールスコープのストア / ref 由来なので参照安定（registry のメモ化キー）。
