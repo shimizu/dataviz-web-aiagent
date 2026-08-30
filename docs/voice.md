@@ -135,6 +135,10 @@ native audio モデルは言語を自動判別するので言語指定はせず�
 
 **画像を見せるときは `session.sendImage()` を先に呼び、その後で応答を返す**（逆だとモデルが画像を見ずに話し始める）。
 
+本アプリの実例（`src/App.jsx`）: `look_at_visualization` は、今表示している可視化の SVG を
+`svgToJpegBase64`（`src/viz/png-export.js`）で JPEG にして `sendImage` してから `{ looked: true, title, vizId, version }` を返す。
+可視化がまだ無ければ `{ looked: false, error: '…先に図を作るよう案内してください' }`。
+
 ### ディスパッチ
 
 `dispatchToolCall(toolCall, handlers)` は `functionCalls[]` を**逐次**処理する（`gemini-3.1-flash-live-preview` は非同期 function calling
@@ -155,9 +159,14 @@ native audio モデルは言語を自動判別するので言語指定はせず�
 
 | 経路 | タイミング | 関数 | 用途 |
 |---|---|---|---|
-| system instruction | 接続時に 1 回 | `buildContext(): string` | 現在のレイヤー一覧など、会話の前提 |
+| system instruction | 接続時に 1 回 | `buildContext(): string` | 読み込み済みデータ・現在の可視化など、会話の前提 |
 | ツール応答への同梱 | 関数を呼ばれるたび | `buildSnapshot(): object` → `buildContextSnapshot` | 会話中の状態変化（**`sendText` では伝えない**） |
 | テキスト送信 | Claude 完了時だけ | `buildCompletionNotice({ status, content, extras })` | 完了の読み上げ |
+
+本アプリの実体は `src/viz/voice-summary.js`（純関数・テスト対象）。`buildVoiceContextText` はアプリの説明 +
+データセット一覧 + 現在の可視化を、`buildVoiceSnapshotData` は `{ datasets: [{ id, name, kind }], visualization }` を返し、
+`buildFinishedExtras` が完了通知に「可視化 viz_001 v2「…」を表示中です。」を添える。
+App は状態を ref から読んで渡すだけなので、`buildContext` / `buildSnapshot` / `extraTools` の参照は安定したまま。
 
 `buildCompletionNotice` は本文から Markdown 記号（`# * \` > |`）を除き空白を潰して **300 文字**に切り、
 `【Claude 完了】`（`completed` 以外は `【Claude 終了: status】`）を頭に付ける。`extras[]` は括弧書きで足す補足（例: 「追加レイヤー: NDVI」）。

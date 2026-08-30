@@ -221,6 +221,10 @@ warnings があっても `ok:true` なら成功（Claude が warnings を読ん�
 | **M6 音声・仕上げ** | `buildContext` / `buildSnapshot` / `look_at_visualization`、「新しい会話」の全消去、CSP 最終確認 | 音声で「このグラフを見て」→ 画像送信後に応答。「新しい会話」で IDB が空。preview で CSP 違反ゼロ |
 
 ### 進捗
+- **M6 完了（2026-08-30）= 全マイルストーン完了**: `src/viz/voice-summary.js`（buildContext / buildSnapshot / 完了通知の extras。純関数）/
+  App の音声結線（`look_at_visualization` は JPEG を `sendImage` してから応答）/ `test/voice-summary.test.js`（計 128 件）。
+  本番ビルド + Chromium で最終確認: 取り込み → 描画 → SVG を JPEG 化（12KB）→ 「新しい会話」で IndexedDB の 3 ストアと
+  画面（データ・メッセージ・ログ）が空 → **CSP 違反 0 件・ページエラー 0 件**。
 - **M5 完了（2026-08-30）**: `read_reference`（`reference-index.js` は番号の連続性 + 見出しレベルで章を判定、`reference-loader.js` は `?raw` の動的 import →
   ガイドは初期チャンクに入らず 19〜53KB の別チャンク）/ スキル 5 本（workflow + charts + maps + geojson + raster、合計約 33k 文字。
   各末尾に `read_reference` 用の目次を置き、`test/reference-index.test.js` が実ファイルの章番号・見出しと突き合わせる）/

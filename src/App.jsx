@@ -27,8 +27,9 @@ import { createVizFrameBridge } from './viz/viz-frame-bridge.js'
 import { VIZ_FRAME_PATH, VIZ_RUNTIME_PATH } from './viz/frame-protocol.js'
 import { VIZ_THEME } from './viz/viz-theme.js'
 import { svgToBlob, toFileName } from './viz/svg-export.js'
-import { svgToPngBlob } from './viz/png-export.js'
+import { svgToJpegBase64, svgToPngBlob } from './viz/png-export.js'
 import { buildZipFiles, createZipBlob, zipFileName } from './viz/zip-export.js'
+import { buildFinishedExtras, buildVoiceContextText, buildVoiceSnapshotData } from './viz/voice-summary.js'
 import { downloadBlob } from './viz/download.js'
 import { uuid } from './utils/ids.js'
 
@@ -247,13 +248,69 @@ function App() {
     () => buildSystemBlocks({ systemPrompt: SYSTEM_PROMPT, contextParts: [() => formatDatasetList(datasets)] }),
     [datasets],
   )
-  // Gemini に追加で公開する関数（例: 画面のスクリーンショット）。[{ declaration, handler }]
-  const voiceExtraTools = useMemo(() => [], [])
+  // --- 音声に渡す状況とツール ---
+  // 状況は毎ターン変わるので ref から読む（extraTools / buildContext の参照を変えず start を作り直さない）。
+  const voiceStateRef = useRef({ datasets, visualizations, currentViz })
+  useEffect(() => {
+    voiceStateRef.current = { datasets, visualizations, currentViz }
+  }, [datasets, visualizations, currentViz])
+
+  // 現在表示中の可視化とそのバージョン（音声ツールと buildSnapshot で使う）。ref から読むので参照は安定。
+  const getCurrentVersion = useCallback(() => {
+    const { currentViz: target } = voiceStateRef.current
+    const viz = target ? visualizationStore.get(target.vizId) : null
+    if (!viz) return null
+    return { viz, version: visualizationStore.getVersion(viz.id, target.version) }
+  }, [])
+
+  // 接続時の指示文に入れる状況（文字列）と、ツール応答へ同梱する状況（オブジェクト）。組み立ては viz/voice-summary.js。
+  const buildVoiceContext = useCallback(() => {
+    const current = getCurrentVersion()
+    return buildVoiceContextText({ datasets: voiceStateRef.current.datasets, viz: current?.viz ?? null, version: current?.version ?? null })
+  }, [getCurrentVersion])
+  const buildVoiceSnapshot = useCallback(() => {
+    const current = getCurrentVersion()
+    return buildVoiceSnapshotData({ datasets: voiceStateRef.current.datasets, viz: current?.viz ?? null, version: current?.version ?? null })
+  }, [getCurrentVersion])
+
+  // Gemini に追加で公開する関数。画像は「sendImage → 応答」の順で渡す。
+  const voiceExtraTools = useMemo(
+    () => [
+      {
+        declaration: {
+          name: 'look_at_visualization',
+          description:
+            '今表示している可視化を画像として見る。ユーザーが「この図どう？」「何が分かる？」「見て」と言ったときに、答える前に呼ぶ。',
+          parameters: { type: 'OBJECT', properties: {} },
+        },
+        async handler(_args, { session, log }) {
+          const current = getCurrentVersion()
+          if (!current?.version?.svg) return { looked: false, error: 'まだ可視化がありません。先に図を作るよう案内してください' }
+          try {
+            const base64 = await svgToJpegBase64(current.version.svg, { width: current.version.width, height: current.version.height })
+            session.sendImage(base64, 'image/jpeg')
+            log?.(`🎙 可視化 ${current.viz.id} v${current.version.version} を音声セッションへ送信`)
+            return { looked: true, title: current.viz.title, vizId: current.viz.id, version: current.version.version }
+          } catch (e) {
+            return { looked: false, error: `画像にできませんでした: ${e.message}` }
+          }
+        },
+      },
+    ],
+    [getCurrentVersion],
+  )
 
   // --- エージェント ---
   // 完了通知は音声セッション（後段で作る）へ ref 経由で転送する（フックの依存順の都合）。
   const agentFinishedRef = useRef(null)
-  const handleAgentFinished = useCallback((result) => agentFinishedRef.current?.(result), [])
+  const handleAgentFinished = useCallback(
+    (result) => {
+      const current = getCurrentVersion()
+      const extras = buildFinishedExtras({ viz: current?.viz ?? null, version: current?.version ?? null })
+      agentFinishedRef.current?.({ ...result, extras: extras ? [extras] : [] })
+    },
+    [getCurrentVersion],
+  )
   const { messages, isRunning, chatInput, setChatInput, chatInputRef, handleSubmit, handleAbort, handleResetChat } =
     useAgentSession({
       deps: agentDeps,
@@ -292,6 +349,8 @@ function App() {
     setChatInput,
     enableSearch: Boolean(settings.voiceSearch),
     voiceName: settings.voiceName,
+    buildContext: buildVoiceContext,
+    buildSnapshot: buildVoiceSnapshot,
     extraTools: voiceExtraTools,
     log,
   })
