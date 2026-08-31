@@ -95,6 +95,23 @@ const projection = d3.geoEqualEarth().fitExtent([[24, 56], [width - 24, height -
 const path = d3.geoPath(projection)
 \`\`\`
 
+### 注目地域（AOI）への切り出し
+
+「関東だけ」「この県の周辺」のような依頼は、**fitExtent の対象を注目地域だけの FeatureCollection にして**切り出す
+（全体を描いてから縮小しない。周辺の地物は自然に端で切れてよい）。
+
+\`\`\`js
+const aoi = { type: 'FeatureCollection', features: fc.features.filter((d) => TARGET.has(d.properties.pref)) }
+const projection = d3.geoConicEqualArea().rotate([-135, 0]).parallels([30, 40])
+  .fitExtent([[24, 56], [width - 24, height - 40]], aoi)      // 描くのは fc 全部、fit は aoi だけ
+const path = d3.geoPath(projection)
+// ラベルは描画範囲内に centroid がある地物だけに付ける（端で切れるラベルを作らない）
+const inView = ([x, y]) => x > 24 && x < width - 24 && y > 56 && y < height - 24
+const labeled = fc.features.map((d) => ({ d, c: path.centroid(d) })).filter(({ c }) => Number.isFinite(c[0]) && inView(c))
+\`\`\`
+
+「端で切れているラベル」の警告が出たら**ズームアウトせず**、この方法でラベルを間引く（切り出し範囲は依頼の意図なので守る）。
+
 ## 4. レイヤーの順序と境界線
 
 描画順: 背景（Sphere / 海）→ graticule → 陸 → **主題データ（塗り）** → 境界線 → シンボル → ラベル → 注釈。
@@ -199,6 +216,8 @@ g.symbols.selectAll('circle').data(sorted).join('circle')
 - ❌ 円やラベルが消える → ✅ \`projection([lon, lat])\` が範囲外で null。null を除外してから描く。
 - ❌ 細長い県・多島のラベルが海に落ちる → ✅ \`path.centroid\` でなく \`turf.pointOnFeature(d)\` の座標を投影する。
 - ❌ CSV と結合できない地物が灰色だらけ → ✅ キーを \`String()\` で揃え、結合できなかった件数を console に出して確認する。
+- ❌ AOI に切り出したら「端で切れているラベル」警告 → ✅ ズームアウトしない。§3 の方法で範囲内の地物だけにラベルを付ける。
+- ❌ 「関東だけ」の依頼で全国を描いてしまう → ✅ \`fitExtent\` の対象を注目地域だけの FeatureCollection にする（§3）。
 
 ## 13. 詳細（read_reference('maps', 番号)）
 

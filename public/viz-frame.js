@@ -178,6 +178,29 @@
     return w > 2 && h > 2 ? w * h : 0
   }
 
+  // 2 矩形の交差矩形（交差しなければ幅・高さ 0）。
+  function intersectRect(a, b) {
+    var left = Math.max(a.left, b.left)
+    var top = Math.max(a.top, b.top)
+    var right = Math.min(a.right, b.right)
+    var bottom = Math.min(a.bottom, b.bottom)
+    return { left: left, top: top, right: right, bottom: bottom }
+  }
+
+  function intersectArea(r, b) {
+    var w = Math.min(r.right, b.right) - Math.max(r.left, b.left)
+    var h = Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top)
+    return w > 0 && h > 0 ? w * h : 0
+  }
+
+  // clip-path を持つ祖先がいるか（クリップは作者が管理している意図とみなし、検査対象から外す）。
+  function hasClipPathAncestor(el, root) {
+    for (var node = el; node && node !== root; node = node.parentElement) {
+      if (node.getAttribute && (node.getAttribute('clip-path') || (node.style && node.style.clipPath))) return true
+    }
+    return false
+  }
+
   function collectDesignWarnings(svg, warnings) {
     try {
       var svgRect = svg.getBoundingClientRect()
@@ -191,7 +214,10 @@
       }
       if (tiny > 0) warnings.push('9px 未満の文字が ' + tiny + ' 個あります（theme.label.minFontSize 未満は読めない）')
 
-      // 2) ラベルの重なりと端切れ（実測の描画矩形で判定）
+      // 2) ラベルの重なりと端切れ（実測の描画矩形で判定）。
+      //    クリップは意図として尊重する: clip-path 配下のテキストは作者が管理しているので対象外、
+      //    描画範囲からほぼ全部外れているラベル（AOI に切り出した地図の周辺地物など）も意図的として対象外。
+      //    「一部だけ切れている」だけを事故として数える。
       if (texts.length > MAX_LINT_TEXTS) {
         warnings.push('テキストが ' + texts.length + ' 個と多く、重なり検査をスキップしました（全点ラベルになっていないか確認）')
       } else {
@@ -199,9 +225,14 @@
         for (var t = 0; t < texts.length; t += 1) {
           var el = texts[t]
           if (el.textContent.trim() === '') continue
+          if (hasClipPathAncestor(el, svg)) continue
           var r = el.getBoundingClientRect()
           if (r.width === 0 || r.height === 0) continue
-          boxes.push({ rect: r, text: el.textContent.trim().slice(0, 12), clip: el.ownerSVGElement })
+          // 可視率 = 外側 svg ∩ 属する入れ子 svg（overflow: hidden）に収まっている面積の割合
+          var bounds = el.ownerSVGElement && el.ownerSVGElement !== svg ? el.ownerSVGElement.getBoundingClientRect() : svgRect
+          var visible = intersectArea(intersectRect(r, bounds), svgRect) / (r.width * r.height)
+          if (visible <= 0.1) continue // ほぼ全部外 = 意図的（描かれもしない）
+          boxes.push({ rect: r, text: el.textContent.trim().slice(0, 12), visible: visible })
         }
         var overlapPairs = 0
         var overlapExample = ''
@@ -211,6 +242,7 @@
         for (var p = 0; p < boxes.length; p += 1) {
           for (var q = p + 1; q < boxes.length; q += 1) {
             if (boxes[q].rect.left >= boxes[p].rect.right) break
+            if (boxes[p].visible < 0.5 || boxes[q].visible < 0.5) continue
             var area = intersect(boxes[p].rect, boxes[q].rect)
             var smaller = Math.min(
               boxes[p].rect.width * boxes[p].rect.height,
@@ -228,19 +260,16 @@
         var clipped = 0
         var clippedExample = ''
         for (var c = 0; c < boxes.length; c += 1) {
-          // 外側 svg と、属している入れ子 svg（overflow: hidden）の両方ではみ出しを見る
-          var bounds = boxes[c].clip && boxes[c].clip !== svg ? boxes[c].clip.getBoundingClientRect() : svgRect
-          var rr = boxes[c].rect
-          var out =
-            rr.left < bounds.left - 2 || rr.right > bounds.right + 2 || rr.top < bounds.top - 2 || rr.bottom > bounds.bottom + 2 ||
-            rr.left < svgRect.left - 2 || rr.right > svgRect.right + 2 || rr.top < svgRect.top - 2 || rr.bottom > svgRect.bottom + 2
-          if (out) {
+          if (boxes[c].visible < 0.98) {
             clipped += 1
             if (!clippedExample) clippedExample = '「' + boxes[c].text + '」'
           }
         }
         if (clipped > 0) {
-          warnings.push('端で切れているラベルが ' + clipped + ' 個あります（例: ' + clippedExample + '）。余白を広げるか位置を変える')
+          warnings.push(
+            '一部が端で切れているラベルが ' + clipped + ' 個あります（例: ' + clippedExample + '）。' +
+              'チャートは余白を広げる。切り出した地図では端にかかるラベルを隠す（範囲内の地物だけにラベルを付ける）。ズームアウトで対処しない',
+          )
         }
       }
 
