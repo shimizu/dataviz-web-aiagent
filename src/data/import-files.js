@@ -3,7 +3,7 @@
 // 役割: File[] を拡張子と中身から csv/tsv / geojson / geotiff に振り分け、上限を検査してパースし、
 //       原本を file-store に、正規化済みを dataset-store に入れる。失敗は 1 件ずつ拾って他のファイルを止めない。
 // 関係: components/dataviz/DropZone.jsx → App.jsx → ここ。パーサは parsers/*。
-//       上限は Plan.md の「小〜中」（CSV 20 万行 / GeoJSON 20MB / GeoTIFF 50MB）。
+//       上限は「小〜中規模」の想定（CSV 20 万行 / GeoJSON 20MB / GeoTIFF 50MB）。
 import { MAX_TABULAR_ROWS, parseDelimitedText } from './parsers/tabular.js'
 import { MAX_GEOJSON_BYTES, parseGeoJson } from './parsers/geojson.js'
 import { MAX_GEOTIFF_BYTES, parseGeoTiff } from './parsers/geotiff.js'

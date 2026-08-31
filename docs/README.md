@@ -20,7 +20,6 @@ voice-agent-shell の設計と使い方をまとめたドキュメントです�
 
 ## 関連ファイル
 
-- [`../Plan.md`](../Plan.md) — データ可視化ドメインの設計（隔離 iframe・viz-runtime・IndexedDB・ツール・スキル）と実装の進捗
 - [`../README.md`](../README.md) — プロジェクトの概要と最短のセットアップ
 - [`../CLAUDE.md`](../CLAUDE.md) — AI コーディングエージェント向けの要約（守るべき前提・コードスタイル）
 - 切り出し元・兄弟プロジェクト（ドメイン注入の実例）: [gee-ai-agent](https://github.com/shimizu/gee-ai-agent) /
