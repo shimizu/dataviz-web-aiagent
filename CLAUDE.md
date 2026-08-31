@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install        # 依存インストール（Node 20+。~/.npmrc の min-release-age に注意）
 npm run dev        # Vite 開発サーバー（http://localhost:5173）。predev で viz-runtime を生成
 npm run build      # 本番ビルド（dist/）。CSP meta を注入する。prebuild で viz-runtime を生成
-npm run build:runtime  # public/viz-runtime.js（d3 + geo-projection + geo-polygon + turf + geoWarp + pretext の IIFE）だけ作る
+npm run build:runtime  # public/viz-runtime.js（d3 + geo-projection + geo-polygon + Plot + turf + geoWarp + pretext の IIFE）だけ作る
 npm run preview    # ビルド結果のプレビュー
 npm run lint       # ESLint（--max-warnings 0）
 npm test           # node --test（ブラウザ非依存の純ロジックのみ）
@@ -62,7 +62,8 @@ dataviz-parsers / dataviz-tools / dataviz-viz〔偽 bridge〕/ viz-export〔zip 
   スマホの 100vh/100dvh の揺れ対策。API が無い環境は CSS の dvh に委ねる。
 
 ### エージェント層（`src/agent/`）
-`runtime.js`（tool use ループ、`is_error` で自己修正、`TOOL_RESULT_CHAR_CAP`）、`claude-client.js`（直叩き・リトライ・プロンプトキャッシュ）、
+`runtime.js`（tool use ループ、`is_error` で自己修正、`TOOL_RESULT_CHAR_CAP`。ツール結果の `_image` は画像付き tool_result になり、
+終了時に `stripToolResultImages` で画像をテキストへ畳んで localStorage 永続化を守る）、`claude-client.js`（直叩き・リトライ・プロンプトキャッシュ）、
 `tool-registry.js`、`compaction.js`（古い tool_result をプレースホルダに）、`conversation-store.js`（`storageKey` 注入可）、
 `system-prompt.js`（`composeSystemPrompt({ base, skills })`。`tools/` を import しない）、
 `system-context.js`（`buildSystemBlocks({ systemPrompt, contextParts, now })`: 安定プレフィックス〔cache_control〕+ 揮発ブロック
@@ -93,7 +94,8 @@ deps の形は `src/tools/register-tools.js` 先頭のコメント参照（`{ po
 **ツールは要約だけを LLM に返す**（行データ・地物はアプリ側のストアへ）。例外はそのまま投げる。
 - `dataviz/`（本アプリの本体）: `list_datasets` / `describe_dataset` / `save_dataset`（`dataset-handlers.js`）、
   `render_visualization` / `update_visualization`（`visualization-handlers.js`: `inspectCode` → bridge へデータセット送信 → 描画 → ストア保存 →
-  `postChatMessage({ kind:'viz' })`。失敗はエラー + スタック 3 行 + console を 1 メッセージにして `is_error`）、
+  `postChatMessage({ kind:'viz' })`。成功時は deps の `snapshotSvg` で PNG を撮り `_image` として返し、Claude が自分の図を見て
+  自己批評 → update する（workflow スキルの MUST 10。スナップショット失敗は描画成功のまま）。失敗はエラー + スタック 3 行 + console を 1 メッセージにして `is_error`）、
   `read_reference`（`reference-handlers.js` + `reference-index.js`: `reference/*.md` を `?raw` の動的 import で読み、番号付き見出しで分割）。
   スキルは `agent/skills/dataviz-{workflow,charts,maps,geojson,raster}.js`（ガイドの要約 + `read_reference` 用の目次。
   目次はテストが実ファイルと突き合わせる）。各スキルは「守る規則（MUST）→ 本文 → よくある事故と修正 → 目次」の順。
@@ -130,8 +132,12 @@ Worker へ API キー・DOM・localStorage は渡さない。
   親の meta CSP を継承しないので、frame 自身の CSP（`script-src 'self' 'unsafe-eval'; connect-src 'none'` 等）で `new Function` を
   許可しつつ外部通信・親の localStorage / DOM を遮断する。**親の `vite.config.js` の CSP は変更しない**（Chromium で実測済み）。
 - `public/viz-runtime.js` は `vite.runtime.config.js` で作る生成物（gitignore）。frame の `<script src>` と zip 同梱で共用。
-- `public/viz-frame.js`（手書き classic script）: データセットを Map にキャッシュ、`render({ container, d3, turf, geoWarp, datasets, width, height, theme })`
+- `public/viz-frame.js`（手書き classic script）: データセットを Map にキャッシュ、`render({ container, d3, Plot, turf, geoWarp, pretext, datasets, width, height, theme })`
   を呼び、`<svg>` を正規化して文字列と警告・console を返す。メッセージ種別は `src/viz/frame-protocol.js` の写し（テストが突き合わせる）。
+  **基本チャートは Plot（Observable Plot）で組む**（タイトル・凡例は外側 svg + Plot の svg を入れ子。Plot の `title` / `legend` は
+  `<figure>` を作り単一 svg 契約を壊すのでフレームがエラーにする）。入れ子 svg は Plot 内蔵 CSS（height:auto 等）が属性を
+  上書きして内容がずれるため、width / height 属性をインラインスタイルへ焼き込んで補正する（zip の起動コードも同じ補正）。
+  警告にはデザイン検査（ラベルの重なり・端切れ・9px 未満・塗り色相 > 8・近白塗り）を含む。
 - `src/viz/viz-frame-bridge.js`: ready ハンドシェイク・描画の直列化・タイムアウト時は iframe をリロードして復旧・送信済みデータセットの記録。
   **iframe は DOM から外すと再読み込み、`display:none` はレイアウト値を壊す**ので、可視化タブが非表示のときは画面外へ退避する。
 - `src/viz/viz-theme.js`（デザイントークン。スキルの表もここから生成）/ `svg-export.js` / `png-export.js`（data: URL → canvas 2x。blob: を使わない）/

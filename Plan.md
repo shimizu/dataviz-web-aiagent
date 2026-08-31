@@ -140,4 +140,21 @@ DOM（getBBox）依存のため node テスト対象外。Playwright の preview
 
 ## 進捗
 
-- 未着手。
+- **完了（2026-08-31）**: 段 1〜6 をすべて実施。
+  - 段 1: `@observablehq/plot` 0.6.17 を viz-runtime v3 に同梱（`window.Plot`、runtime 1,155KB / gzip 355KB、+68KB gzip）。
+    frame / zip の render 引数に `Plot`。`<figure>` は凡例 svg を誤って書き出すためフレームで修正方法付きエラーに。
+    本番 CSP 下（preview + Chromium）で描画・入れ子・書き出しを実測確認。
+  - 段 2: charts スキルに §2「まず Plot で組む」（外側 svg + 入れ子の型・`chart.scale().apply()` の仕上げ・tidy 化・
+    時間軸の日本語 tickFormat）、図種レシピを Plot マークに置換（円・ドーナツは d3 のまま）。workflow の模範 render 例を
+    Plot 型に書き換え。**実測で見つけた事故**: Plot 内蔵 CSS（`height:auto` / `max-width:100%`）が入れ子 svg の属性を
+    上書きし内容が +32px ずれる → frame / zip で width / height 属性をインラインスタイルへ焼き込む補正を実装。
+  - 段 3: `collectWarnings` にデザイン検査（ラベル重なり・端切れ・9px 未満・塗り色相 12 バケツで 8 超・近白塗り）。
+    悪い図で全 5 警告の発火・Plot の良い図で誤検知ゼロを実測。theme 外 hex の照合はランプ補間色が誤検知になるため見送り。
+  - 段 4: runtime に `_image` → 画像 + テキストの tool_result（cap はテキストのみ）。終了時に `stripToolResultImages` で
+    画像をプレースホルダへ畳み localStorage 永続化を守る。compaction の配列 content 対応をテストで確認。
+  - 段 5: `svgToPngBase64`（maxWidth 800・PNG）→ handlers が deps 注入の `snapshotSvg` で `_image` 同梱 →
+    App の `agentDeps` に結線。workflow スキルに MUST 10（画像を見て重なり・切れ・余白・階層・凡例を点検、
+    update は最大 2 回）。
+  - 段 6: 目視 6 図（Plot 折れ線 + 終端ラベル / 積み上げ + 上凡例 / fy ファセット / 散布 + 回帰破線 /
+    d3 ドーナツ + 引き出し線 + 下凡例 / d3 コロプレス + halo。全図警告 0）。テスト 134 件 / lint 0 / build 成功。
+  - 副産物: 巻き方向が逆の GeoJSON（地球全体が塗られる事故）でデザイン検査が正しく発火することを確認。
