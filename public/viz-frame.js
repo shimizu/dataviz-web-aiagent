@@ -267,7 +267,7 @@
       }
       if (hueCount > 8) warnings.push('塗りの色相が ' + hueCount + ' 種類あります（系列色は 8 まで。上位 + その他に畳むか small multiples に）')
       if (nearWhite > 0) warnings.push('白背景に溶ける近白の塗りが ' + nearWhite + ' 個あります（theme の色を使う）')
-    } catch (err) {
+    } catch {
       // 検査自体の失敗で描画を壊さない（getBBox 不可の環境など）
     }
   }
