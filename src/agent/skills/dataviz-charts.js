@@ -198,23 +198,11 @@ const div = d3.scaleDiverging([-max, 0, max], d3.interpolateRdBu)               
 
 ## 8. 軸のレシピ（d3 で描くとき）
 
-Plot で組む図（MUST 1）では軸・グリッドは Plot が作るので**この節は不要**。円・ドーナツ・地図・特殊図を
-d3 で組むときだけ使う。
-
-\`\`\`js
-g.call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0))                    // x: 外側の目盛りを消し、本数はサイズから
-  .call((g) => g.select('.domain').attr('stroke', theme.colors.axis))
-  .call((g) => g.selectAll('text').attr('fill', theme.colors.mutedText))
-g.call(d3.axisLeft(y).ticks(height / 40).tickFormat(d3.format('.2~s')))         // y: domain 線を消し、目盛り線をグリッドに
-  .call((g) => g.select('.domain').remove())
-  .call((g) => g.selectAll('.tick line').attr('x2', innerWidth).attr('stroke', theme.colors.grid))
-  .call((g) => g.selectAll('text').attr('fill', theme.colors.mutedText))
-const y = d3.scaleLinear().domain([0, d3.max(data, (d) => d.value)]).nice().range([height - m.bottom, m.top])
-svg.append('line').attr('x1', m.left).attr('x2', width - m.right).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', theme.colors.axis) // 正負がある図の 0 線
-\`\`\`
-
-- 日付軸は \`d3.scaleUtc\`。目盛り書式は期間に合わせる（年 \`%Y\`、月 \`%Y-%m\` / \`%-m月\`、日 \`%-m/%-d\`）。
-- カテゴリ軸は \`d3.scaleBand().padding(0.2〜0.3)\`。文字が重なるなら横棒（文字を回転させない）。
+Plot で組む図（MUST 1）では軸・グリッドは Plot が作るので不要。d3 で軸を組む特殊図だけ:
+\`d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0)\` / \`d3.axisLeft(y).ticks(height / 40)\`、
+domain 線と目盛り文字は \`theme.colors.axis\` / \`mutedText\`、y の目盛り線は \`theme.colors.grid\` のグリッドにする。
+日付軸は \`d3.scaleUtc\` + 期間に合う書式（年 \`%Y\`、月 \`%-m月\`、日 \`%-m/%-d\`）。カテゴリ軸は
+\`d3.scaleBand().padding(0.2〜0.3)\`、文字が重なるなら横棒（回転させない）。正負がある図は y(0) に基準線。
 
 ## 9. ラベル・凡例・注釈
 
