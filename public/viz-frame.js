@@ -137,7 +137,139 @@
     var textCount = svg.querySelectorAll('text').length
     if (textCount === 0) warnings.push('<text> がありません（タイトル・軸ラベル・凡例を確認）')
     if (!svg.querySelector('title')) warnings.push('<title> がありません（svg 直下に図の説明を入れる）')
+    collectDesignWarnings(svg, warnings)
     return { warnings: warnings, elementCount: elementCount, textCount: textCount, imageCount: svg.querySelectorAll('image').length }
+  }
+
+  // --- デザイン検査（機械的に判定できるものだけ。誤検知しやすい規則は入れない） ---
+  var MAX_LINT_TEXTS = 300
+
+  function parseRgb(value) {
+    var m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(value || '')
+    if (!m) return null
+    var a = m[4] === undefined ? 1 : parseFloat(m[4])
+    if (a === 0) return null
+    return { r: +m[1], g: +m[2], b: +m[3] }
+  }
+
+  function luminance(c) {
+    return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255
+  }
+
+  // 彩度のある色の色相を 12 バケツに量子化（ランプの濃淡は同じバケツに落ちる）
+  function hueBucket(c) {
+    var r = c.r / 255
+    var g = c.g / 255
+    var b = c.b / 255
+    var max = Math.max(r, g, b)
+    var min = Math.min(r, g, b)
+    if (max - min < 0.15) return null // 無彩色は数えない
+    var h
+    if (max === r) h = ((g - b) / (max - min)) % 6
+    else if (max === g) h = (b - r) / (max - min) + 2
+    else h = (r - g) / (max - min) + 4
+    h = (h * 60 + 360) % 360
+    return Math.floor(h / 30)
+  }
+
+  function intersect(a, b) {
+    var w = Math.min(a.right, b.right) - Math.max(a.left, b.left)
+    var h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
+    return w > 2 && h > 2 ? w * h : 0
+  }
+
+  function collectDesignWarnings(svg, warnings) {
+    try {
+      var svgRect = svg.getBoundingClientRect()
+      var texts = svg.querySelectorAll('text')
+
+      // 1) 文字サイズ < 9px
+      var tiny = 0
+      for (var i = 0; i < texts.length; i += 1) {
+        var fs = parseFloat(getComputedStyle(texts[i]).fontSize)
+        if (fs && fs < 9) tiny += 1
+      }
+      if (tiny > 0) warnings.push('9px 未満の文字が ' + tiny + ' 個あります（theme.label.minFontSize 未満は読めない）')
+
+      // 2) ラベルの重なりと端切れ（実測の描画矩形で判定）
+      if (texts.length > MAX_LINT_TEXTS) {
+        warnings.push('テキストが ' + texts.length + ' 個と多く、重なり検査をスキップしました（全点ラベルになっていないか確認）')
+      } else {
+        var boxes = []
+        for (var t = 0; t < texts.length; t += 1) {
+          var el = texts[t]
+          if (el.textContent.trim() === '') continue
+          var r = el.getBoundingClientRect()
+          if (r.width === 0 || r.height === 0) continue
+          boxes.push({ rect: r, text: el.textContent.trim().slice(0, 12), clip: el.ownerSVGElement })
+        }
+        var overlapPairs = 0
+        var overlapExample = ''
+        boxes.sort(function (a, b) {
+          return a.rect.left - b.rect.left
+        })
+        for (var p = 0; p < boxes.length; p += 1) {
+          for (var q = p + 1; q < boxes.length; q += 1) {
+            if (boxes[q].rect.left >= boxes[p].rect.right) break
+            var area = intersect(boxes[p].rect, boxes[q].rect)
+            var smaller = Math.min(
+              boxes[p].rect.width * boxes[p].rect.height,
+              boxes[q].rect.width * boxes[q].rect.height,
+            )
+            if (smaller > 0 && area > smaller * 0.25) {
+              overlapPairs += 1
+              if (!overlapExample) overlapExample = '「' + boxes[p].text + '」と「' + boxes[q].text + '」'
+            }
+          }
+        }
+        if (overlapPairs > 0) {
+          warnings.push('重なっているラベルが ' + overlapPairs + ' 組あります（例: ' + overlapExample + '）。ずらす / 隠す / 縁取りで対処')
+        }
+        var clipped = 0
+        var clippedExample = ''
+        for (var c = 0; c < boxes.length; c += 1) {
+          // 外側 svg と、属している入れ子 svg（overflow: hidden）の両方ではみ出しを見る
+          var bounds = boxes[c].clip && boxes[c].clip !== svg ? boxes[c].clip.getBoundingClientRect() : svgRect
+          var rr = boxes[c].rect
+          var out =
+            rr.left < bounds.left - 2 || rr.right > bounds.right + 2 || rr.top < bounds.top - 2 || rr.bottom > bounds.bottom + 2 ||
+            rr.left < svgRect.left - 2 || rr.right > svgRect.right + 2 || rr.top < svgRect.top - 2 || rr.bottom > svgRect.bottom + 2
+          if (out) {
+            clipped += 1
+            if (!clippedExample) clippedExample = '「' + boxes[c].text + '」'
+          }
+        }
+        if (clipped > 0) {
+          warnings.push('端で切れているラベルが ' + clipped + ' 個あります（例: ' + clippedExample + '）。余白を広げるか位置を変える')
+        }
+      }
+
+      // 3) 塗りの色相数 > 8（濃淡ランプは同一色相に落ちるので数えない）と、白背景の近白塗り
+      var shapes = svg.querySelectorAll('path, rect, circle, ellipse, polygon')
+      var hueSeen = {}
+      var hueCount = 0
+      var nearWhite = 0
+      var svgArea = Math.max(1, svgRect.width * svgRect.height)
+      var limit = Math.min(shapes.length, 2000)
+      for (var s = 0; s < limit; s += 1) {
+        var fill = parseRgb(getComputedStyle(shapes[s]).fill)
+        if (!fill) continue
+        var bucket = hueBucket(fill)
+        if (bucket !== null && !hueSeen[bucket]) {
+          hueSeen[bucket] = true
+          hueCount += 1
+        }
+        if (luminance(fill) > 0.95) {
+          var sr = shapes[s].getBoundingClientRect()
+          // 背景レイヤー（svg の大半を覆う矩形）と極小の区切りは除外
+          if (sr.width > 4 && sr.height > 4 && (sr.width * sr.height) / svgArea < 0.8) nearWhite += 1
+        }
+      }
+      if (hueCount > 8) warnings.push('塗りの色相が ' + hueCount + ' 種類あります（系列色は 8 まで。上位 + その他に畳むか small multiples に）')
+      if (nearWhite > 0) warnings.push('白背景に溶ける近白の塗りが ' + nearWhite + ' 個あります（theme の色を使う）')
+    } catch (err) {
+      // 検査自体の失敗で描画を壊さない（getBBox 不可の環境など）
+    }
   }
 
   // --- 描画 ---
