@@ -44,6 +44,15 @@ export async function svgToPngBlob(svg, options) {
   })
 }
 
+// PNG の base64（tool_result で Claude 自身に描画結果を見せる用。data URL の接頭辞は含めない）。
+// 図は細線と文字が主役なので JPEG でなく PNG（アーティファクトで読みにくくならない）。
+export async function svgToPngBase64(svg, { maxWidth = 800, ...options } = {}) {
+  const width = Number(options.width) || maxWidth
+  const scale = Math.min(1, maxWidth / width)
+  const canvas = await svgToCanvas(svg, { ...options, scale })
+  return canvas.toDataURL('image/png').split(',')[1] ?? ''
+}
+
 // JPEG の base64（音声セッションへ画像を送る用。data URL の接頭辞は含めない）。
 export async function svgToJpegBase64(svg, { maxWidth = 1024, quality = 0.82, ...options } = {}) {
   const width = Number(options.width) || maxWidth

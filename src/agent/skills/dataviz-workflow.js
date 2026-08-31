@@ -151,11 +151,16 @@ function render({ container, d3, Plot, datasets, width, height, theme }) {
 8. **MUST: 存在しないパレット名・API を書かない** — 下の「D3 v7 に存在しない API」の表と実在リストの範囲で書く。
 9. **MUST: 基本チャートは \`Plot\` で組む** — 折れ線・棒・散布図などは「チャートの作法」§2 の型（外側 svg + 入れ子）。
    Plot の \`title\` / \`caption\` / \`legend\` オプションは \`<figure>\` を生成して単一 svg 契約を壊すため使わない。
+10. **MUST: 描画結果の画像を必ず見て直す** — render / update の結果に描画画像が添付される。
+   ① ラベルの重なり・端切れ ② 余白と詰まり ③ 視覚階層（主役が一番目立つか）④ 凡例と色の対応 を点検し、
+   直せる問題があれば \`update_visualization\` で直す（**最大 2 回**まで。それ以上は現状と残る問題を報告して判断を仰ぐ）。
+   問題がなければそのまま完了してよい。warnings の指摘（重なり・端切れ・色数など）は画像で該当箇所を確認してから直す。
 
 ### theme（render の引数）
 ${describeTheme(VIZ_THEME)}
 
 ### 戻り値の読み方
+- **描画結果の画像**が添付される。数値の確認だけで済ませず、必ず図として見る（MUST 10 の観点）。
 - \`stats\`: 要素数・テキスト数・画像数・SVG のバイト数・描画時間。
 - \`warnings\`: フレームが見つけた問題（svg が無い / 空 / 要素数過多 / 属性に NaN・undefined / \`<foreignObject>\` / 外部参照 /
   サイズ不一致 / \`<text>\` が無い / \`<title>\` が無い）。**NaN・undefined は必ず直す**（スケールの domain や欠損値が原因）。

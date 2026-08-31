@@ -34,7 +34,7 @@ function fakeBridge() {
   }
 }
 
-async function setup() {
+async function setup({ snapshotSvg } = {}) {
   const datasetStore = createDatasetStore({ persist: false })
   await datasetStore.hydrate()
   datasetStore.add(TABULAR)
@@ -50,6 +50,7 @@ async function setup() {
     vizBridge,
     postChatMessage: (m) => posted.push(m),
     onVisualizationShown: (id) => shown.push(id),
+    ...(snapshotSvg ? { snapshotSvg } : {}),
     log: () => {},
   })
   return { datasetStore, visualizationStore, vizBridge, posted, shown, registry }
@@ -86,6 +87,30 @@ test('render_visualization はデータセットを送って描き、保存し�
   assert.equal(saved.versions[0].svg, '<svg>19</svg>')
   assert.deepEqual(posted[0], { kind: 'viz', vizId: 'viz_001', version: 1, title: '売上', label: '可視化' })
   assert.deepEqual(shown, ['viz_001'])
+})
+
+test('snapshotSvg が注入されていれば結果に _image（PNG base64）が付き、失敗しても描画は成功する', async () => {
+  const snaps = []
+  const { registry } = await setup({
+    snapshotSvg: async (svg, { width, height }) => {
+      snaps.push({ svg, width, height })
+      return 'UE5H'
+    },
+  })
+  const out = await registry.execute('render_visualization', { title: 't', code: 'function render(){}', datasetIds: ['ds_001'] })
+  assert.deepEqual(out._image, { data: 'UE5H', media_type: 'image/png' })
+  assert.match(out.note, /描画画像を必ず確認/)
+  assert.equal(snaps[0].svg, '<svg>19</svg>')
+  assert.equal(snaps[0].width, 960)
+
+  const upd = await registry.execute('update_visualization', { vizId: out.vizId, code: 'function render(){ }' })
+  assert.deepEqual(upd._image, { data: 'UE5H', media_type: 'image/png' })
+
+  // スナップショット失敗は描画の成功を壊さない
+  const broken = await setup({ snapshotSvg: async () => { throw new Error('canvas なし') } })
+  const out2 = await broken.registry.execute('render_visualization', { title: 't', code: 'function render(){}', datasetIds: ['ds_001'] })
+  assert.equal(out2.ok, true)
+  assert.equal('_image' in out2, false)
 })
 
 test('render_visualization の入力エラーは直し方が分かる日本語', async () => {

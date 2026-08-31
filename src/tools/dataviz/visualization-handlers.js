@@ -4,7 +4,9 @@
 //       の順で処理し、**要約だけ**を返す（SVG 全文は返さない）。失敗はそのまま例外にして runtime に
 //       is_error で返させ、error メッセージ + console + stack でモデルに直させる。
 // 関係: index.js が deps を渡して作る。deps = { datasetStore, visualizationStore, vizBridge, postChatMessage,
-//       onVisualizationShown, log }。フレーム側の契約は public/viz-frame.js。
+//       onVisualizationShown, snapshotSvg, log }。フレーム側の契約は public/viz-frame.js。
+//       snapshotSvg(svg, { width, height }) は SVG → PNG base64（App が png-export を結線。DOM 依存なので注入）。
+//       成功時は結果に _image を同梱し、runtime が画像付き tool_result にしてモデルに自分の図を見せる。
 import { inspectCode } from '../../analysis/code-guard.js'
 import { DEFAULT_VIZ_HEIGHT, DEFAULT_VIZ_WIDTH, clampVizSize } from '../../viz/frame-protocol.js'
 import { VIZ_THEME } from '../../viz/viz-theme.js'
@@ -42,6 +44,7 @@ export function makeVisualizationHandlers({
   vizBridge,
   postChatMessage,
   onVisualizationShown,
+  snapshotSvg,
   log,
   theme = VIZ_THEME,
 } = {}) {
@@ -87,6 +90,28 @@ export function makeVisualizationHandlers({
     return { result, ids }
   }
 
+  // 描画結果の PNG を撮る（自己批評用）。失敗しても描画自体は成功として返す。
+  const snapshot = async (result) => {
+    if (!snapshotSvg) return null
+    try {
+      const data = await snapshotSvg(result.svg, { width: result.width, height: result.height })
+      return data ? { data, media_type: 'image/png' } : null
+    } catch (error) {
+      log?.(`⚠ 描画画像のスナップショットに失敗: ${error instanceof Error ? error.message : error}`)
+      return null
+    }
+  }
+
+  // 要約 + 画像。画像が撮れたときは見るべき観点も note に足す。
+  const withImage = (summary, image) => {
+    if (!image) return summary
+    return {
+      ...summary,
+      note: `${summary.note} / 添付の描画画像を必ず確認する（ラベルの重なり・切れ、余白、視覚階層、凡例と色の対応）`,
+      _image: image,
+    }
+  }
+
   const announce = (viz, version, result) => {
     postChatMessage?.({ kind: 'viz', vizId: viz.id, version, title: viz.title, label: '可視化' })
     onVisualizationShown?.(viz.id)
@@ -111,7 +136,7 @@ export function makeVisualizationHandlers({
         height: result.height,
       })
       announce(viz, 1, result)
-      return summarizeRender({ vizId: viz.id, version: 1, title: viz.title, result })
+      return withImage(summarizeRender({ vizId: viz.id, version: 1, title: viz.title, result }), await snapshot(result))
     },
 
     async updateVisualization({ vizId, code, title, width, height, changeNote, description } = {}) {
@@ -142,7 +167,10 @@ export function makeVisualizationHandlers({
       })
       const version = saved.currentVersion
       announce(saved, version, result)
-      return { ...summarizeRender({ vizId: id, version, title: saved.title, result }), datasetIds: ids }
+      return withImage(
+        { ...summarizeRender({ vizId: id, version, title: saved.title, result }), datasetIds: ids },
+        await snapshot(result),
+      )
     },
   }
 }

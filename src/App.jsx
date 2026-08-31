@@ -27,7 +27,7 @@ import { createVizFrameBridge } from './viz/viz-frame-bridge.js'
 import { VIZ_FRAME_PATH, VIZ_RUNTIME_PATH } from './viz/frame-protocol.js'
 import { VIZ_THEME } from './viz/viz-theme.js'
 import { svgToBlob, toFileName } from './viz/svg-export.js'
-import { svgToJpegBase64, svgToPngBlob } from './viz/png-export.js'
+import { svgToJpegBase64, svgToPngBase64, svgToPngBlob } from './viz/png-export.js'
 import { buildZipFiles, createZipBlob, zipFileName } from './viz/zip-export.js'
 import { buildFinishedExtras, buildVoiceContextText, buildVoiceSnapshotData } from './viz/voice-summary.js'
 import { downloadBlob } from './viz/download.js'
@@ -240,6 +240,8 @@ function App() {
       getAnalysisResult: (codeHash) => analysisCache.get(codeHash),
       // 描画後に可視化タブへ切り替える。
       onVisualizationShown: (vizId) => shownCallbackRef.current?.(vizId),
+      // 描画結果の PNG（base64）。tool_result に同梱して Claude 自身に図を見せ、自己批評 → update を促す。
+      snapshotSvg: (svg, { width, height } = {}) => svgToPngBase64(svg, { width, height, maxWidth: 800 }),
     }),
     [vizBridge],
   )
