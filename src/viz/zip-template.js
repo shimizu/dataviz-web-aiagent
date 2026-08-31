@@ -104,6 +104,7 @@ ${String(code ?? '').trim()}
         render({
           container: container,
           d3: window.d3,
+          Plot: window.Plot,
           turf: window.turf,
           geoWarp: window.geoWarp,
           pretext: window.pretext,
@@ -207,7 +208,7 @@ ${fileNames.map((n) => `  - ${n}`).join('\n')}
 ${list || '  （なし）'}
 
 ■ 手を入れるとき
-  viz.js の上半分が描画コード（render 関数）です。d3 / turf / geoWarp / pretext が
+  viz.js の上半分が描画コード（render 関数）です。d3 / Plot / turf / geoWarp / pretext が
   グローバルに読み込まれた状態で呼ばれます。data/datasets.js は自動生成なので
   直接編集せず、data/ 内の元ファイルから作り直すことをおすすめします。
 `

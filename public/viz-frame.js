@@ -1,7 +1,7 @@
 // 可視化フレーム（隔離 iframe）側のブリッジ。classic script（ビルドしない・import しない）。
 //
 // 役割: 親（src/viz/viz-frame-bridge.js）から postMessage で受けた生成コードを new Function で評価し、
-//       render({ container, d3, turf, geoWarp, pretext, datasets, width, height, theme }) を呼んで、できた <svg> を文字列で返す。
+//       render({ container, d3, Plot, turf, geoWarp, pretext, datasets, width, height, theme }) を呼んで、できた <svg> を文字列で返す。
 //       データセットは Map にキャッシュし、render のたびに再送させない。console とエラーを捕捉して結果に添える。
 // 関係: viz-runtime.js（window.d3 / turf / geoWarp）を先に読み込む。メッセージ種別は src/viz/frame-protocol.js の写し
 //       （変更時は両方を直す。test/viz-frame-bridge.test.js が突き合わせる）。
@@ -158,6 +158,7 @@
         return render({
           container: container,
           d3: window.d3,
+          Plot: window.Plot,
           turf: window.turf,
           geoWarp: window.geoWarp,
           pretext: window.pretext,
@@ -169,6 +170,12 @@
       })
       .then(function () {
         if (lastError) throw lastError
+        if (container.querySelector('figure')) {
+          throw new Error(
+            'container に <figure> があります。Plot の title / subtitle / caption / legend オプションは使わず、' +
+              'タイトルと凡例は外側の svg に描いて Plot.plot() の svg を入れ子にする（単一 svg 契約）',
+          )
+        }
         var svg = container.querySelector('svg')
         if (!svg) throw new Error('container に <svg> がありません（render は container の中に svg を 1 つ作る）')
         normalizeSvg(svg, width, height)
