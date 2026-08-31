@@ -83,6 +83,18 @@
     }
     if (!svg.getAttribute('width')) svg.setAttribute('width', String(width))
     if (!svg.getAttribute('height')) svg.setAttribute('height', String(height))
+    // 入れ子 svg（Plot の入れ子など）は、内部の <style>（例: Plot の height:auto / max-width:100%）が
+    // width / height 属性を CSS で上書きし、preserveAspectRatio の中央寄せで内容がずれることがある。
+    // 属性値をインラインスタイルへ焼き込んで属性どおりの寸法を強制する（インラインは :where() に必ず勝つ）。
+    var nested = svg.querySelectorAll('svg')
+    for (var i = 0; i < nested.length; i += 1) {
+      var el = nested[i]
+      var nw = el.getAttribute('width')
+      var nh = el.getAttribute('height')
+      if (nw && !el.style.width) el.style.width = nw + 'px'
+      if (nh && !el.style.height) el.style.height = nh + 'px'
+      if (!el.style.maxWidth) el.style.maxWidth = 'none'
+    }
   }
 
   function collectWarnings(svg, width, height) {

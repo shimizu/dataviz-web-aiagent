@@ -113,9 +113,20 @@ ${String(code ?? '').trim()}
           height: ${Number(height) || 600},
           theme: theme,
         }),
-      ).catch(showError)
+      ).then(fixNestedSvg).catch(showError)
     } catch (error) {
       showError(error)
+    }
+  }
+  // 入れ子 svg（Plot など）の内部 <style> が width / height 属性を CSS で上書きして内容がずれるのを防ぐ
+  // （フレーム側 viz-frame.js の normalizeSvg と同じ補正）。
+  function fixNestedSvg() {
+    var nested = container.querySelectorAll('svg svg')
+    for (var i = 0; i < nested.length; i += 1) {
+      var el = nested[i]
+      if (el.getAttribute('width') && !el.style.width) el.style.width = el.getAttribute('width') + 'px'
+      if (el.getAttribute('height') && !el.style.height) el.style.height = el.getAttribute('height') + 'px'
+      if (!el.style.maxWidth) el.style.maxWidth = 'none'
     }
   }
   function showError(error) {

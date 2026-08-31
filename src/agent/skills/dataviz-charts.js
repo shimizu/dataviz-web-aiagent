@@ -1,7 +1,8 @@
 // 一般チャート（折れ線・棒・散布図など）を美しく作るための指針スキル（Markdown 文字列・決定的）。
 //
-// 役割: 図の選び方・レイアウト・軸・ラベルの作法（reference/d3js_beautiful_dataviz_guide.md の要約）と、
-//       **配色の規則**（検証済みの固定順パレット・注目以外は見えるグレー・量は単色ランプ）を Claude に教える。
+// 役割: 基本チャートを **Plot（Observable Plot）で組み、仕上げだけ d3 で足す**手順と、図の選び方・レイアウト・
+//       ラベルの作法（reference/d3js_beautiful_dataviz_guide.md の要約）、**配色の規則**（検証済みの固定順パレット・
+//       注目以外は見えるグレー・量は単色ランプ）を Claude に教える。
 //       配色は theme（viz/viz-theme.js）の値だけを使わせ、似た色や薄い色でまとめる失敗を防ぐ。揮発情報は含めない。
 // 関係: tools/dataviz/index.js が skills に載せる。詳細節は read_reference('dataviz', 番号) で取得できる。
 // 流用元: reference/d3js_beautiful_dataviz_guide.md §1・§3〜§11・§16〜§17・§20〜§21 + 検証済み配色パレット
@@ -9,12 +10,16 @@ export const DATAVIZ_CHARTS_SKILL = `# スキル: チャートの作法（折れ
 
 ## 守る規則（MUST）
 
-1. **MUST: 棒は 0 から伸ばす**。基線を切らない（折れ線は切ってよい）。
-2. **MUST: 2 軸（左右で別スケール）を作らない** — 尺度の違う 2 指標は 2 枚に分けるか、共通の基準（指数化）に揃える。
-3. **MUST: 無順序のカテゴリを線でつながない** — 「都市別」を折れ線にすると存在しないトレンドに見える → 棒。
-4. **MUST: 円グラフは 5 区分まで・0 や負の値には使わない** — 超えたら降順の横棒。
-5. **MUST: 円の半径は \`d3.scaleSqrt\`** — 面積を値に比例させる（linear だと大が誇張される）。
-6. **MUST: 凡例は描画と同じスケールから作る** — 凡例用に別の色配列・別の閾値を書かない。
+1. **MUST: 基本チャートは Plot で組む** — 折れ線・棒・積み上げ・面・散布・ヒストグラム・箱ひげ・ヒートマップ・
+   small multiples は §2 の型どおり Plot で描き、軸・スケール・目盛りを d3 で自作しない（円・ドーナツと地図は d3）。
+2. **MUST: Plot の \`title\` / \`subtitle\` / \`caption\` / \`legend\` オプションを使わない** — \`<figure>\` が生成されて
+   書き出しがエラーになる。タイトル・凡例は外側 svg に d3 で描く（§2 の型）。
+3. **MUST: 棒は 0 から伸ばす**。基線を切らない（折れ線は切ってよい）。
+4. **MUST: 2 軸（左右で別スケール）を作らない** — 尺度の違う 2 指標は 2 枚に分けるか、共通の基準（指数化）に揃える。
+5. **MUST: 無順序のカテゴリを線でつながない** — 「都市別」を折れ線にすると存在しないトレンドに見える → 棒。
+6. **MUST: 円グラフは 5 区分まで・0 や負の値には使わない** — 超えたら降順の横棒。
+7. **MUST: 円の半径は \`d3.scaleSqrt\`** — 面積を値に比例させる（linear だと大が誇張される）。
+8. **MUST: 凡例は描画と同じスケールから作る** — 凡例用に別の色配列・別の閾値を書かない。
 
 ## 1. 図の選び方は「読み手が何を比較するか」で決める
 
@@ -55,7 +60,63 @@ export const DATAVIZ_CHARTS_SKILL = `# スキル: チャートの作法（折れ
 - 順序 → 位置 > 大きさ > 単色ランプ。
 - **一番伝えたい比較に、一番精度の高いチャネル（位置・長さ）を割り当てる**。色は 2 番目以降の変数に。
 
-## 2. 配色の規則（最重要。必ず theme の値を使う）
+## 2. まず Plot で組む（基本チャートの土台）
+
+軸・スケール・目盛り・グリッドの調整済みの既定値を持つ **Plot（render 引数の \`Plot\`）** に土台を任せ、
+タイトル・凡例・注釈・直接ラベルの**仕上げだけを d3 で足す**。自前の \`d3.axisBottom\` からの組み立ては
+円・ドーナツ・地図・特殊図だけにする。
+
+### 型: 外側 svg + Plot の入れ子（この形を崩さない）
+
+\`\`\`js
+const HEADER = 56                       // タイトル + サブタイトル分。上に凡例を置くなら +24
+const keys = ['A事業', 'B事業']
+const chart = Plot.plot({
+  width: width - 16,                    // 入れ子のオフセット分を必ず差し引く（右・下が切れる事故の定番）
+  height: height - HEADER - 8,
+  marginLeft: 56, marginRight: 24,
+  style: { fontFamily: theme.font.family, fontSize: theme.font.axis + 'px', color: theme.colors.mutedText },
+  color: { domain: keys, range: theme.series },        // 系列色は必ず theme.series（忘れると Plot 既定色になる）
+  x: { label: null },
+  y: { grid: true, label: '売上（億円）' },
+  marks: [
+    Plot.ruleY([0], { stroke: theme.colors.axis }),
+    Plot.lineY(rows, { x: 'month', y: 'value', stroke: 'key', strokeWidth: theme.line.normal,
+      title: (d) => d.key + ': ' + d.value }),         // title チャネル = ホバーの <title>
+  ],
+})
+const svg = d3.select(container).append('svg')
+  .attr('width', width).attr('height', height).attr('viewBox', \`0 0 \${width} \${height}\`)
+svg.append('title').text('図の要点')                    // svg 直下の <title>（MUST）
+svg.append('text').attr('x', 16).attr('y', 28).attr('font-size', theme.font.title)
+  .attr('font-weight', 650).attr('fill', theme.colors.text).text('タイトル')
+svg.append('text').attr('x', 16).attr('y', 46).attr('font-size', theme.font.subtitle)
+  .attr('fill', theme.colors.secondaryText).text('サブタイトル（単位・期間・対象）')
+d3.select(chart).attr('x', 8).attr('y', HEADER)
+svg.node().appendChild(chart)                           // Plot の svg を入れ子にする（SVG として合法）
+\`\`\`
+
+- Plot の \`title\` / \`subtitle\` / \`caption\` / \`legend\` オプションは**使わない**（MUST 2。\`<figure>\` が返り
+  「container に \`<figure>\`」エラーになる。凡例は §9 のレシピで外側 svg に描く）。
+- **データは縦持ち（tidy）にする**: 1 行 = 1 点。wide なら
+  \`const rows = data.flatMap((d) => keys.map((k) => ({ month: d.month, key: k, value: d[k] })))\`。
+- date 列は文字列のまま入っている: \`d3.utcParse('%Y-%m-%d')\` で Date にしてから渡す（x が時間軸になる）。
+- **時間軸の目盛りは日本語 1 行にする**: \`x: { tickFormat: d3.utcFormat('%-m月') }\`（期間で選ぶ: 年 \`%Y\`・
+  月 \`%-m月\` / \`%Y-%m\`・日 \`%-m/%-d\`）。既定の英語 2 行組（Sep / 2025）は下余白に収まらず切れやすい。
+
+### 仕上げ（注釈・終端ラベル）は Plot のスケールで座標を取る
+
+\`\`\`js
+const xs = chart.scale('x'), ys = chart.scale('y')
+d3.select(chart).append('text')                         // 仕上げは chart の svg に足す（外側ではなく）
+  .attr('x', xs.apply(lastMonth) + 8).attr('y', ys.apply(lastValue))
+  .attr('dominant-baseline', 'middle').attr('font-size', theme.font.label)
+  .attr('fill', theme.colors.text).text('A事業')
+\`\`\`
+
+参照線・帯・強調点も同じ方法で \`chart.scale(...)\` から座標を取り、色は §9 の注釈の規則（\`theme.annotation\`）に従う。
+
+## 3. 配色の規則（最重要。必ず theme の値を使う）
 
 色は「見た目」ではなく**仕事**で決める。1 つの図の中で、色がする仕事は 1 つ。
 
@@ -98,7 +159,7 @@ const seq = d3.scaleQuantize().domain([0, max]).range(theme.sequential.blue5)   
 const div = d3.scaleDiverging([-max, 0, max], d3.interpolateRdBu)                          // 前年比などの差
 \`\`\`
 
-## 3. 視覚的階層（データ > 文字 > 軸 > グリッド）
+## 4. 視覚的階層（データ > 文字 > 軸 > グリッド）
 
 \`\`\`text
 データ            theme.series / theme.colors.primary（濃く・太く）
@@ -111,7 +172,7 @@ const div = d3.scaleDiverging([-max, 0, max], d3.interpolateRdBu)               
 
 面（area・帯）は同じ色で \`fill-opacity: 0.25〜0.35\`、上に 2px の線。重なる点は \`stroke: #fff\` 1.5px の白縁で切り分ける。
 
-## 4. マークの仕様
+## 5. マークの仕様
 
 - 線: \`theme.line.normal\`（2px）、\`stroke-linecap/linejoin: round\`。注目 2.5px、文脈 1.5px。
 - 点: 半径 \`theme.radius.point\`（4px、直径 8px 以上）。散布図は \`fill-opacity 0.6\` + 白縁 1px。
@@ -119,23 +180,26 @@ const div = d3.scaleDiverging([-max, 0, max], d3.interpolateRdBu)               
 - 直接ラベルは**選んで**付ける（終端・最大・最小・注目。全点には付けない）。
 - 系列が 2 本以上なら凡例を置く（1 本ならタイトルが系列名）。凡例の並びはデータの順（終端の値の降順など）。
 
-## 5. 12 の原則（要約）
+## 6. 12 の原則（要約）
 
 1. データより目立つ装飾を作らない。 2. 色は意味に使う（上の表）。 3. 強調は 1 つか 2 つ。 4. 凡例より直接ラベル。
 5. グリッドは薄く。 6. 余白を恐れない。 7. 数値は整形する（\`d3.format('.3~s')\` / \`','\` / \`.1%\`）。
 8. 曲線で美化しない（\`curveLinear\`、せいぜい \`curveMonotoneX\`）。 9. ツールチップだけに情報を隠さない（\`<title>\` は補助）。
 10. アニメーションは使わない（静止画で書き出す）。 11. \`viewBox\` を付ける。 12. タイトルは「何が分かるか」。
 
-## 6. レイアウトと文字
+## 7. レイアウトと文字
 
 - Margin convention: \`m = { top, right, bottom, left }\` を先に決め、\`innerWidth = width - m.left - m.right\`。
   - 上 56〜64px: タイトル + サブタイトル。下 40px: x 軸。左 48〜64px: y 軸の目盛り文字幅。右 80〜110px: 折れ線の直接ラベル分。
 - 文字サイズは \`theme.font\`（title 20 / subtitle 13 / label 12 / axis 11 / note 10）。**8px 以下にしない**。
 - 階層: タイトル（太字 650・\`text\`）→ サブタイトル（単位・期間・対象、\`secondaryText\`）→ 図 → 出典・注記（note、\`mutedText\`、右下か左下）。
 - 単位は毎目盛りに繰り返さず、軸ラベルかサブタイトルに 1 回。
-- ラベルが端で切れないかは目分量でなく **\`pretext\` で実測**する（§8 のラベル節）。余白は実測値から決める。
+- ラベルが端で切れないかは目分量でなく **\`pretext\` で実測**する（§9 のラベル節）。余白は実測値から決める。
 
-## 7. 軸のレシピ
+## 8. 軸のレシピ（d3 で描くとき）
+
+Plot で組む図（MUST 1）では軸・グリッドは Plot が作るので**この節は不要**。円・ドーナツ・地図・特殊図を
+d3 で組むときだけ使う。
 
 \`\`\`js
 g.call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0))                    // x: 外側の目盛りを消し、本数はサイズから
@@ -152,7 +216,7 @@ svg.append('line').attr('x1', m.left).attr('x2', width - m.right).attr('y1', y(0
 - 日付軸は \`d3.scaleUtc\`。目盛り書式は期間に合わせる（年 \`%Y\`、月 \`%Y-%m\` / \`%-m月\`、日 \`%-m/%-d\`）。
 - カテゴリ軸は \`d3.scaleBand().padding(0.2〜0.3)\`。文字が重なるなら横棒（文字を回転させない）。
 
-## 8. ラベル・凡例・注釈
+## 9. ラベル・凡例・注釈
 
 ### ラベルの 4 つの対処（重なる・読めないとき）
 
@@ -222,37 +286,56 @@ svg.append('text').attr('x', nx).attr('y', ny).attr('font-size', theme.annotatio
 - 範囲の帯（正常域・対象期間）: \`theme.annotation.bandFill\` + \`fill-opacity: theme.annotation.bandOpacity\`（主役より必ず弱く）。
 - 強調する 1 点（最大値・異常値）: \`theme.annotation.highlight\` の丸 r5 + 値のラベル。
 
-## 9. 図種ごとの要点
+## 10. 図種ごとのレシピ（基本は §2 の型 + この marks）
 
-**折れ線**: \`d3.line().defined((d) => d.value != null)\` で欠損を切る。系列 1 本ならデータ点を打たず、点は強調箇所だけ。
-予測・推計は破線（\`stroke-dasharray: '6 4'\`）で区別し、色だけに頼らない。
+**折れ線**: \`Plot.lineY(rows, { x, y, stroke: 'key', strokeWidth: theme.line.normal })\`。欠損（null）は自動で線が切れる。
+系列 1 本ならデータ点を打たず、点は強調箇所だけ。予測・推計は別系列にして \`strokeDasharray: '6 4'\`（色だけに頼らない）。
 
-**棒**: 0 基準を崩さない。ランキングは横棒 + 降順ソート。全部 \`primary\`、強調 1 本だけ \`accent\`。
-負の値は 0 から左右に伸ばし \`positive\` / \`negative\`。積み上げは \`d3.stack()\` + \`theme.series\` 順 + 2px の白い隙間。
+**棒**: \`Plot.barY(rows, { x, y, fill: theme.colors.primary })\` + \`Plot.ruleY([0])\`。
+ランキングは横棒 \`Plot.barX(rows, { y, x, sort: { y: '-x' } })\`。強調 1 本だけ
+\`fill: (d) => d.name === highlight ? theme.colors.accent : theme.colors.primary\`。
+負があれば \`fill: (d) => d.value < 0 ? theme.colors.negative : theme.colors.positive\`。
 
-**円・ドーナツ**（区分 ≤ 5・割合が主役・差が大きいときだけ）: \`d3.pie().sort(null).value((d) => d.value)\` + \`d3.arc()\`。
+**グループ棒**: \`Plot.barY(rows, { x: 'key', y: 'value', fill: 'key', fx: 'group' })\`（系列 ≤ 4〜5）。
+\`fx: { label: null }\` でファセット軸のラベルを消す。
+
+**積み上げ棒**: \`Plot.barY(rows, { x, y, fill: 'key', stroke: '#ffffff', strokeWidth: 1 })\`（同じ x に複数行があると
+自動で積む）。\`color.domain\` の keys と凡例の並びを**同じ順**にする。
+
+**面**: \`Plot.areaY(rows, { x, y, fill: theme.colors.primary, fillOpacity: 0.3 })\` + 同じデータの \`Plot.lineY\` を上に。
+
+**散布図**: \`Plot.dot(rows, { x, y, r: theme.radius.point, fill: 'group', fillOpacity: 0.6, stroke: '#fff', strokeWidth: 1 })\`。
+色分けは 4 群まで（\`color: { range: theme.series.slice(0, 4) }\`）。傾向線は
+\`Plot.linearRegressionY(rows, { x, y, stroke: theme.colors.secondaryText, strokeDasharray: '6 4', ci: 0 })\`。注目点だけラベル。
+
+**ヒストグラム**: \`Plot.rectY(rows, Plot.binX({ y: 'count' }, { x: 'value', fill: theme.colors.primary, inset: 0.5 }))\`。
+ビン幅と件数をサブタイトルに。
+
+**箱ひげ**: \`Plot.boxY(rows, { x: 'group', y: 'value', fill: theme.colors.primary })\`（各群 ≥ 5 点）。
+
+**ヒートマップ（格子）**: \`Plot.cell(rows, { x, y, fill: 'value', inset: 0.5 })\` +
+\`color: { type: 'linear', interpolate: d3.interpolateBlues }\`（量は単色ランプの規則どおり）。
+
+**Small multiples**: \`fy: 'key'\`（または \`fx\`）を marks のチャネルに足すだけ。y のスケールは自動で共有される。
+各パネル同じ 1 色（\`primary\`）。パネル数に合わせて Plot の \`height\` を増やす（1 パネル 120px 目安）。
+
+**円・ドーナツ**（区分 ≤ 5・割合が主役・差が大きいときだけ。**Plot でなく d3**）:
+\`d3.pie().sort(null).value((d) => d.value)\` + \`d3.arc()\`。
 ドーナツは内径 55%（\`innerRadius(R * 0.55)\`）にして中心に合計値。色は \`theme.series\` を順に、区分の間は白 2px の \`stroke\`。
 ラベルは外側 + 引き出し線で「名前 割合%」（重なったら小区分から隠す）。凡例は下。6 区分以上になったら降順の横棒に切り替える。
 
-**散布図**: \`r: theme.radius.point\`、\`fill-opacity 0.6\`、白縁 1px。色分けは 4 群まで（\`theme.series\` 先頭 4 色）。注目点だけラベル。
-傾向線は最小二乗（\`d3.sum\` で計算）を \`theme.colors.secondaryText\` の破線で。
-
-**ヒストグラム**: \`d3.bin().value(...).thresholds(n)\`。全ビン \`primary\`、棒の間隔 1px。ビン幅と件数をサブタイトルに。
-
-**Small multiples**: 同じスケール（y の domain を共有）で並べる。各パネルは同じ 1 色（\`primary\`）、比較対象があれば \`context\` の全体線を下敷きに。
-
-## 10. 大量データ
+## 11. 大量データ
 
 - 描く要素は 5,000 個程度まで。超えるなら集計（\`d3.rollup\`）・サンプリング・ビン化。
 - 散布図で 1 万点超なら canvas に描いて \`<image>\` として埋める（軸・ラベル・注釈は SVG のまま重ねる）。
 
-## 11. よくある失敗（見つけたら直す）
+## 12. よくある失敗（見つけたら直す）
 
 1. 系列を薄いグレーやパステルで描く（見えない）。 2. 同系色だけでまとめる（区別できない）。 3. 系列の数だけ色を作る・循環させる。
 4. 量に虹色、名義カテゴリに濃淡。 5. 黒い軸・濃いグリッドがデータと同じ強さ。 6. 全点にラベル。
 7. 目盛りの本数が固定。 8. 滑らかな曲線で美化。 9. タイトルが変数名。 10. 0 を切った棒。 11. 2 軸。
 
-## 12. 描く前・描いた後のチェック
+## 13. 描く前・描いた後のチェック
 
 - 一番伝えたいことを 1 文で言える → それがタイトル
 - 色がする仕事が 1 つに決まっている（識別 / 量 / 差 / 状態 / 注目）。値は theme から取った
@@ -261,8 +344,13 @@ svg.append('text').attr('x', nx).attr('y', ny).attr('font-size', theme.annotatio
 - 余白が足りていて、ラベルが端で切れていない。目盛りが多すぎず、単位が分かる
 - \`<title>\` があり、NaN / undefined の警告が無い
 
-## 13. よくある事故と修正
+## 14. よくある事故と修正
 
+- ❌ \`Plot.plot({ title, legend })\` で「container に \`<figure>\`」エラー → ✅ タイトル・凡例は外側 svg に d3 で描く（§2 の型）。
+- ❌ 入れ子にした Plot の右端・下端が切れる → ✅ Plot の \`width\` / \`height\` から入れ子のオフセット分（x・y）を差し引く。
+- ❌ \`color.range\` を書き忘れて Plot の既定色になる → ✅ §2 の型をコピーし \`color: { domain: keys, range: theme.series }\`。
+- ❌ 時間軸の目盛りが英語 2 行（Sep / 2025）で下が切れる → ✅ \`x: { tickFormat: d3.utcFormat('%-m月') }\` など日本語 1 行に。
+- ❌ 注釈の座標を自前のスケールで計算してずれる → ✅ \`chart.scale('x').apply(v)\` / \`chart.scale('y').apply(v)\` から取り、chart の svg に足す。
 - ❌ 凡例の色と図の色がずれる → ✅ 同じ \`color\` スケールを両方で使う（凡例用に別の配列を書かない）。
 - ❌ 終端ラベルが右端で切れる → ✅ \`text-anchor: 'start'\` + 右余白 80〜110px。それでも収まらなければ線の内側へ。
 - ❌ \`scaleUtc\` に日付**文字列**を渡して NaN → ✅ 先に \`d3.utcParse('%Y-%m-%d')\` で Date にする（date 列は文字列のまま入っている）。

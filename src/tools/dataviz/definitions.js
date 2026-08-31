@@ -11,7 +11,7 @@ export const UPDATE_VISUALIZATION = 'update_visualization'
 export const READ_REFERENCE = 'read_reference'
 
 const CODE_DESCRIPTION =
-  'function render({ container, d3, turf, geoWarp, datasets, width, height, theme }) を定義する JavaScript。' +
+  'function render({ container, d3, Plot, turf, geoWarp, pretext, datasets, width, height, theme }) を定義する JavaScript。' +
   'container の中に <svg> を 1 つ作って描く。先頭行に「何を示す図か」を説明する日本語コメントを入れる。' +
   '外部通信・外部 CSS・アニメーションは使えない。datasets[<datasetId>] で渡したデータセットを参照する。'
 
