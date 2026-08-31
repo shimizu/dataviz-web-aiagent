@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **データ可視化エージェント**。ユーザーが csv / tsv / geojson / geotiff をドロップし、チャットか音声で相談しながら
 **Claude が D3 の描画コードを書いて図を作る**。図は隔離 iframe で実行して SVG に落とし、SVG / PNG / ZIP（html + js + css + データ）で
 ダウンロードできる。骨格は voice-agent-shell（音声 Gemini Live × ツール実行 Claude のブラウザ完結型シェル）で、
-バックエンドを持たず、API キーは localStorage、データと可視化は IndexedDB に保存する。設計と進捗は `Plan.md`。
+バックエンドを持たず、API キーは localStorage、データと可視化は IndexedDB に保存する。
 
 ## コマンド
 
@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install        # 依存インストール（Node 20+。~/.npmrc の min-release-age に注意）
 npm run dev        # Vite 開発サーバー（http://localhost:5173）。predev で viz-runtime を生成
 npm run build      # 本番ビルド（dist/）。CSP meta を注入する。prebuild で viz-runtime を生成
-npm run build:runtime  # public/viz-runtime.js（d3 + geo-projection + geo-polygon + turf + geoWarp の IIFE）だけ作る
+npm run build:runtime  # public/viz-runtime.js（d3 + geo-projection + geo-polygon + turf + geoWarp + pretext の IIFE）だけ作る
 npm run preview    # ビルド結果のプレビュー
 npm run lint       # ESLint（--max-warnings 0）
 npm test           # node --test（ブラウザ非依存の純ロジックのみ）
@@ -96,7 +96,8 @@ deps の形は `src/tools/register-tools.js` 先頭のコメント参照（`{ po
   `postChatMessage({ kind:'viz' })`。失敗はエラー + スタック 3 行 + console を 1 メッセージにして `is_error`）、
   `read_reference`（`reference-handlers.js` + `reference-index.js`: `reference/*.md` を `?raw` の動的 import で読み、番号付き見出しで分割）。
   スキルは `agent/skills/dataviz-{workflow,charts,maps,geojson,raster}.js`（ガイドの要約 + `read_reference` 用の目次。
-  目次はテストが実ファイルと突き合わせる）。
+  目次はテストが実ファイルと突き合わせる）。各スキルは「守る規則（MUST）→ 本文 → よくある事故と修正 → 目次」の順。
+  **実際の描画事故を見つけたら該当スキルの「よくある事故と修正」に ❌/✅ で追記する**（決定的な文字列のまま）。
 - `example/`: `get_current_time` / `calculate`（`arithmetic.js` = 再帰下降パーサ。`eval` 不使用なので CSP に `'unsafe-eval'` 不要）。
 - `javascript/`: `execute_javascript`（生成 JS を隔離 Worker で実行。実行基盤は `src/analysis/`）。
   `deps.getDataset(id)` が注入されていれば `datasetId` / `datasetIds` を公開し、無ければ `args` だけのサンドボックスになる

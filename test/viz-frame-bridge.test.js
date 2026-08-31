@@ -164,4 +164,7 @@ test('clampVizSize と frame 側スクリプトのメッセージ文字列が一
   for (const value of Object.values(FRAME_MESSAGES)) {
     assert.ok(frameSource.includes(`'${value}'`), `public/viz-frame.js に ${value} が無い`)
   }
+  for (const lib of ['d3: window.d3', 'turf: window.turf', 'geoWarp: window.geoWarp', 'pretext: window.pretext']) {
+    assert.ok(frameSource.includes(lib), `public/viz-frame.js が ${lib} を render に渡していない`)
+  }
 })

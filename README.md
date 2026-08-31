@@ -5,7 +5,7 @@ csv / tsv / geojson / geotiff をブラウザにドロップし、チャット�
 ダブルクリックで開ける）で保存できます。バックエンドは無く、API キーは localStorage、データと図は IndexedDB に保存します。
 
 骨格は [voice-agent-shell](https://github.com/shimizu/gee-ai-agent)（音声 Gemini Live × ツール実行 Claude のブラウザ完結型シェル）。
-設計・進捗は [`Plan.md`](./Plan.md)、参考にした作図ガイドは [`reference/`](./reference/)（エージェントが `read_reference` で参照します）。
+参考にした作図ガイドは [`reference/`](./reference/)（エージェントが `read_reference` で参照します）。
 
 ## できること
 
@@ -54,7 +54,7 @@ npm run dev        # http://localhost:5173
 |---|---|
 | `npm run dev` | 開発サーバー（`predev` で `public/viz-runtime.js` を生成） |
 | `npm run build` | 本番ビルド（`dist/`。CSP meta を注入。`prebuild` で viz-runtime を生成） |
-| `npm run build:runtime` | 可視化ランタイム（d3 + turf + geoWarp の IIFE）だけを生成 |
+| `npm run build:runtime` | 可視化ランタイム（d3 + turf + geoWarp + pretext の IIFE）だけを生成 |
 | `npm run preview` | ビルド結果のプレビュー（CSP 有効） |
 | `npm run lint` | ESLint（警告 0） |
 | `npm test` | `node --test`（ブラウザ非依存の純ロジック） |
@@ -71,7 +71,7 @@ npm run dev        # http://localhost:5173
 ```
 public/
   viz-frame.html/.js   可視化フレーム（隔離 iframe。生成コードを new Function で実行し SVG 文字列を返す）
-  viz-runtime.js       生成物（npm run build:runtime）。d3 + d3-geo-projection + d3-geo-polygon + turf + geoWarp
+  viz-runtime.js       生成物（npm run build:runtime）。d3 + d3-geo-projection + d3-geo-polygon + turf + geoWarp + pretext
 reference/             作図ガイド 4 本（スキルの要約元。read_reference が節単位で読む）
 src/
   App.jsx              唯一の結線点（ストア・bridge・ツール deps・表示の結線）

@@ -14,3 +14,5 @@ npm-debug.log*
 # 環境変数（このアプリは使わないが念のため）
 .env
 .env.*
+# 参照用にクローンした外部リポジトリ（コミットしない。必要なら submodule 化する）
+reference/chart-visualization-skills/

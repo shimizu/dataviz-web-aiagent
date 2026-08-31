@@ -4,7 +4,7 @@
 //       「判断規則と D3 のレシピ」に圧縮したもの。このアプリの制約（GeoJSON のみ・TopoJSON / d3-hexbin / polylabel は無い・
 //       静止画で書き出す）に合わせて代替手段を書き添える。揮発情報は含めない。
 // 関係: tools/dataviz/index.js が skills に載せる。目次は test/dataviz-skills.test.js が実ファイルと突き合わせる。
-// 流用元: reference/d3js_beautiful_maps_guide.md §1・§3〜§6・§8・§10〜§16・§18・§29〜§30
+// 流用元: reference/d3js_beautiful_maps_guide.md §1・§3〜§6・§8・§10〜§16・§18・§29〜§30 + 検証済み配色パレット（viz/viz-theme.js）
 
 export const MAPS_REFERENCE_TOC = [
   ['1', '最初に覚えるべき15原則'],
@@ -30,6 +30,15 @@ export const MAPS_REFERENCE_TOC = [
 const toc = MAPS_REFERENCE_TOC.map(([n, t]) => `| ${n} | ${t} |`).join('\n')
 
 export const DATAVIZ_MAPS_SKILL = `# スキル: 地図の作法（コロプレス・比例シンボル・ラベル）
+
+## 守る規則（MUST）
+
+1. **MUST: 絶対数（人口総数・売上総額）をコロプレスに塗らない** — 面積が値に見えてしまう。率・密度に直すか比例シンボル。
+2. **MUST: 一番薄い階級を白にしない** — 背景・データなしと区別が付かなくなる。最薄は \`theme.sequential.blue5[0]\` まで。
+3. **MUST: 塗りの上の境界線は白 0.6px** — 黒い境界で「境界線の図」にしない。外形だけ \`theme.map.borders.coast\` 0.8px。
+4. **MUST: 円の半径は \`d3.scaleSqrt\`、大きい円から先に描く** — 面積比例 + 小さい円が前。白縁 1px で重なりを切る。
+5. **MUST: 地名ラベルは選んで出し、必ずハロー** — 全部出さない。\`paint-order: stroke\` + 白 \`theme.label.haloWidth\`。
+6. **MUST: 種類の塗り分けは \`theme.series\` 先頭 4 色まで** — どの 2 地域も隣接しうる。5 種類以上は「その他」に畳む。
 
 ## 1. 地図にすべきかを先に決める
 
@@ -92,12 +101,11 @@ const path = d3.geoPath(projection)
 それぞれ \`svg.append('g')\` で分ける。
 
 \`\`\`js
-// 塗り（stroke 無し）と境界（fill 無し）を分ける。GeoJSON では共有境界が 2 回描かれるので線は細く薄く
+// 塗り（stroke 無し）と境界（fill 無し）を分ける。GeoJSON では共有境界が 2 回描かれるので線は細く
 g.fill.selectAll('path').data(fc.features).join('path').attr('d', path).attr('fill', (d) => fill(d))
 g.border.selectAll('path').data(fc.features).join('path').attr('d', path)
-  .attr('fill', 'none').attr('stroke', theme.map.borders.regional).attr('stroke-width', theme.map.lineWidth.regional)
-  .attr('stroke-linejoin', 'round')
-// 外形だけ濃く（複数地物なら turf.union で 1 つにするか、stroke を太くした同じ path を下に敷く）
+  .attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 0.6).attr('stroke-linejoin', 'round') // 塗りの上は白い細線が最も読める
+// 外形（海岸線・国境）は theme.map.borders.coast（グレー）を太め 0.8 で
 \`\`\`
 
 - 世界図は \`svg.append('path').datum({ type: 'Sphere' }).attr('d', path)\` で海（\`theme.map.ocean\`）を敷き、
@@ -110,17 +118,20 @@ g.border.selectAll('path').data(fc.features).join('path').attr('d', path)
 // 1. CSV と結合（キーを文字列に揃える）
 const byKey = new Map(datasets.ds_002.records.map((r) => [String(r.code), r.rate]))
 const value = (d) => byKey.get(String(d.properties.code)) ?? null
-// 2. 階級と色（説明できる閾値。5 階級まで）
-const color = d3.scaleThreshold().domain([3, 5, 7, 10]).range(d3.schemeBlues[5])
+// 2. 階級と色（説明できる閾値。5 階級。単色ランプは theme.sequential.blue5）
+const color = d3.scaleThreshold().domain([3, 5, 7, 10]).range(theme.sequential.blue5)
 const fill = (d) => (value(d) == null ? theme.colors.noData : color(value(d)))
-// 3. 凡例（閾値の帯 + 「データなし」）
+// 3. 凡例（閾値の帯 + 「データなし」）は描画に使った color から作る
 const legend = svg.append('g').attr('transform', \`translate(\${width - 180}, \${height - 90})\`)
 \`\`\`
 
 - 階級: \`scaleQuantize\`（等間隔・固定区間・時系列比較向き）/ \`scaleQuantile\`（各階級の地物数が均等・色が散る）/
-  **\`scaleThreshold\`（人が決めた境界。実務ではこれが扱いやすい）**。区分は 5〜7 階級まで。
-- 色: 一方向は \`d3.schemeBlues[n]\` / \`interpolateYlGnBu\`、基準からの差は \`d3.scaleDiverging([lo, 0, hi], d3.interpolateRdBu)\`、
-  種類は \`schemeTableau10\`（面が大きいので彩度を抑える）。虹色は使わない。
+  **\`scaleThreshold\`（人が決めた境界。実務ではこれが扱いやすい）**。区分は 5 階級を基本、最大 7。
+- **色の仕事は 1 つ**。量（率・密度）は単色ランプ（\`theme.sequential.blue5\` / \`d3.interpolateBlues\` / \`interpolateYlGnBu\`。
+  一番薄い段は白ではなく \`#cde2fb\` 程度に留めて陸と区別する）。基準からの差（増減・偏差）は
+  \`d3.scaleDiverging([lo, 0, hi], d3.interpolateRdBu)\`（赤 = 負、青 = 正、中央は無彩色）。
+  種類（区分・カテゴリ）は \`theme.series\` の**先頭 4 色まで**（どの 2 地域も隣り合いうるため）。5 種類以上は「その他」に畳む。
+  虹色・パステルの同系色・面の大きい高彩度は使わない。
 - **0・データなし・対象外を区別**し、凡例にも出す（データなし = \`theme.colors.noData\`、対象外は斜線パターン \`<pattern>\`）。
 - 凡例は「描画に使ったスケールそのもの」から作る（別の閾値を書かない）。単位をタイトルか凡例に。
 - 北海道のように面積が大きい地域が目立つ問題は、率に直しても残る。必要なら比例シンボルや表を併記する。
@@ -132,8 +143,9 @@ const r = d3.scaleSqrt().domain([0, d3.max(rows, (d) => d.value)]).range([0, 28]
 const sorted = [...rows].sort((a, b) => d3.descending(a.value, b.value)) // 大きい円を先に描き、小さい円を前に
 g.symbols.selectAll('circle').data(sorted).join('circle')
   .attr('transform', (d) => \`translate(\${projection([d.lon, d.lat])})\`)
-  .attr('r', (d) => r(d.value)).attr('fill', theme.colors.primary).attr('fill-opacity', 0.55)
-  .attr('stroke', '#fff').attr('stroke-width', 0.7)
+  .attr('r', (d) => r(d.value)).attr('fill', theme.colors.primary).attr('fill-opacity', 0.6)
+  .attr('stroke', '#ffffff').attr('stroke-width', 1)   // 重なりは白縁で切り分ける
+// 2 つの量（例: 輸出と輸入）なら theme.series の 1・2 番目（青・橙）。3 つ以上は分ける
 \`\`\`
 
 - 凡例は代表値 3 つ（最大・中間・小）の同心円か並べた円で。位置は経緯度 → \`projection([lon, lat])\`（null なら描かない）。
@@ -149,11 +161,13 @@ g.symbols.selectAll('circle').data(sorted).join('circle')
 ## 8. ラベル
 
 - 出すのは主要都市・注目地域・分析に必要な地名だけ。重要度で文字サイズを変える（国名 14 / 主要都市 12 / 都市 10 / 補助 9）。
+  文字色はインク色（\`theme.map.labels.primary\` / \`secondary\`）。系列色で文字を書かない。
 - 位置は \`path.centroid(d)\`。細長い・多島・凹形で外に出るなら \`turf.pointOnFeature(d)\` を投影する。
 - 必ずハロー: \`.attr('paint-order', 'stroke').attr('stroke', theme.map.labels.halo).attr('stroke-width', 3).attr('stroke-linejoin', 'round')\`
   文字色は \`theme.map.labels.primary\`。
 - 重なりは事前に判定できないので、数を絞る・小さい地域は省く・引き出し線（leader line）で外に出す。
-- 大文字の長い国名は面積を食う。略称か letter-spacing の調整。
+- 大文字の長い国名は面積を食う。略称か letter-spacing の調整。幅は \`pretext.measureNaturalWidth\` で実測し、
+  地物の幅に入らなければ略称にするか引き出し線で外に出す。
 
 ## 9. 注釈・インセット
 
@@ -164,8 +178,8 @@ g.symbols.selectAll('circle').data(sorted).join('circle')
 ## 10. よくある失敗
 
 1. 世界地図 = Mercator。 2. 行政界を全部黒線。 3. ポリゴンごとに太い stroke。 4. 人口総数をコロプレス。
-5. 円の半径を linear scale。 6. 0 とデータなしが同じ色。 7. 10 段階以上の色。 8. 虹色。 9. ラベル全部表示。
-10. 背景地図が主題より派手。 11. 図だけで全部説明しようとする（表・注釈を併せる）。
+5. 円の半径を linear scale。 6. 0 とデータなしが同じ色。 7. 8 段階以上の色。 8. 虹色・パステルの同系色。 9. ラベル全部表示。
+10. 背景地図が主題より派手。 11. 図だけで全部説明しようとする（表・注釈を併せる）。 12. 一番薄い階級が白で陸と区別できない。
 
 ## 11. チェック
 
@@ -177,7 +191,16 @@ g.symbols.selectAll('circle').data(sorted).join('circle')
 - ラベルは重要なものだけ / ハローがある / 文字サイズの階層がある
 - タイトルが「何が分かるか」を言い、出典・時点・単位がある
 
-## 12. 詳細（read_reference('maps', 番号)）
+## 12. よくある事故と修正
+
+- ❌ 日本だけ塗るつもりが地球全体が塗られる → ✅ 外周リングの巻き方向。\`turf.rewind(fc, { reverse: true })\`（diagnostics 参照）。
+- ❌ \`fitExtent\` しても何も出ない → ✅ 座標が投影済み（メートル）。\`d3.geoIdentity().reflectY(true)\` で描くか経緯度に変換。
+- ❌ 凡例の区切りが図と合わない → ✅ 描画に使った \`color\` スケールから凡例を作る（別の閾値を書き直さない）。
+- ❌ 円やラベルが消える → ✅ \`projection([lon, lat])\` が範囲外で null。null を除外してから描く。
+- ❌ 細長い県・多島のラベルが海に落ちる → ✅ \`path.centroid\` でなく \`turf.pointOnFeature(d)\` の座標を投影する。
+- ❌ CSV と結合できない地物が灰色だらけ → ✅ キーを \`String()\` で揃え、結合できなかった件数を console に出して確認する。
+
+## 13. 詳細（read_reference('maps', 番号)）
 
 | 番号 | 節 |
 |---|---|

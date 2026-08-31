@@ -163,9 +163,17 @@ test('スキルは決定的で、render 契約と theme の表を含む', () => 
   assert.equal(DATAVIZ_WORKFLOW_SKILL, DATAVIZ_WORKFLOW_SKILL.trim())
   assert.ok(DATAVIZ_WORKFLOW_SKILL.startsWith('# スキル: データ可視化の進め方'))
   assert.ok(DATAVIZ_CHARTS_SKILL.startsWith('# スキル: チャートの作法'))
-  assert.match(DATAVIZ_WORKFLOW_SKILL, /function render\(\{ container, d3, turf, geoWarp, datasets, width, height, theme \}\)/)
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /function render\(\{ container, d3, turf, geoWarp, pretext, datasets, width, height, theme \}\)/)
   assert.ok(DATAVIZ_WORKFLOW_SKILL.includes(describeTheme(VIZ_THEME)), 'theme の表は viz-theme.js から生成する')
-  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.colors\.primary` \| `#2563eb`/)
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.colors\.primary` \| `#2a78d6`/)
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.series` \| `\['#2a78d6', '#eb6834'/, 'カテゴリ色の配列が表に載る')
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.colors\.context` \| `#8a8983`/)
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.annotation\.dash` \| `4 4`/, '注釈トークンが表に載る')
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.legend\.markerSize` \| `8`/)
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.label\.haloWidth` \| `3`/)
+  for (const heading of ['### 守る規則（MUST）', '## D3 v7 に存在しない API', '## 迷ったときに読む節（意図 → read_reference）']) {
+    assert.ok(DATAVIZ_WORKFLOW_SKILL.includes(heading), `workflow に ${heading} が無い`)
+  }
   for (const skill of [DATAVIZ_WORKFLOW_SKILL, DATAVIZ_CHARTS_SKILL]) {
     assert.ok(!skill.includes(new Date().toISOString().slice(0, 10)), '現在日時などの揮発情報を含めない')
   }

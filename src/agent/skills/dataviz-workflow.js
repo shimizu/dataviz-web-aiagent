@@ -62,14 +62,15 @@ system の「## 読み込み済みデータセット」に毎ターン示され�
 
 \`\`\`js
 // 何を示す図か: 東京の売上だけが 2 月に増えた（都市別の月次推移）
-function render({ container, d3, turf, geoWarp, datasets, width, height, theme }) {
+function render({ container, d3, turf, geoWarp, pretext, datasets, width, height, theme }) {
   // 1. データを整える（描画と分ける）
   const parse = d3.utcParse('%Y-%m-%d')
   const rows = datasets.ds_001.records
     .map((d) => ({ city: d.都市, date: parse(d.年月), value: d.売上 }))
     .filter((d) => d.date && d.value != null)
   const series = d3.groups(rows, (d) => d.city)
-  const focus = '東京'
+  // 系列 2〜4 本: 固定順のカテゴリ色。5 本以上で注目があるなら「注目 = primary / 残り = context グレー」
+  const color = d3.scaleOrdinal().domain(series.map(([k]) => k)).range(theme.series)
 
   // 2. 枠と余白（上: タイトル 2 行分、右: 直接ラベル分）
   const m = { top: 56, right: 96, bottom: 40, left: 56 }
@@ -94,28 +95,27 @@ function render({ container, d3, turf, geoWarp, datasets, width, height, theme }
     .call((g) => g.selectAll('.tick line').attr('x2', width - m.left - m.right).attr('stroke', theme.colors.grid))
     .call((g) => g.selectAll('text').attr('fill', theme.colors.mutedText))
 
-  // 5. データ層（注目系列だけ強く、他はグレー）
+  // 5. データ層（系列ごとに固定順の色。線は 2px、終端に直接ラベル）
   const line = d3.line().defined((d) => d.value != null).x((d) => x(d.date)).y((d) => y(d.value))
   svg.append('g').selectAll('path').data(series).join('path')
     .attr('fill', 'none').attr('d', ([, v]) => line(v))
-    .attr('stroke', ([k]) => (k === focus ? theme.colors.primary : theme.colors.muted))
-    .attr('stroke-width', ([k]) => (k === focus ? theme.line.focus : theme.line.normal))
+    .attr('stroke', ([k]) => color(k)).attr('stroke-width', theme.line.normal)
     .attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round')
   svg.append('g').selectAll('text').data(series).join('text')
     .attr('x', ([, v]) => x(v.at(-1).date) + 8).attr('y', ([, v]) => y(v.at(-1).value))
-    .attr('dominant-baseline', 'middle').attr('font-size', theme.font.label)
-    .attr('fill', ([k]) => (k === focus ? theme.colors.primary : theme.colors.mutedText)).text(([k]) => k)
+    .attr('dominant-baseline', 'middle').attr('font-size', theme.font.label).attr('font-weight', 600)
+    .attr('fill', theme.colors.text).text(([k]) => k)   // 文字はインク色。色は隣の線が示す
 
   // 6. タイトル・サブタイトル（図の中に描く。書き出しても残るように）
   svg.append('text').attr('x', m.left).attr('y', 24).attr('font-size', theme.font.title).attr('font-weight', 650)
     .attr('fill', theme.colors.text).text('東京の売上だけが 2 月に増えた')
   svg.append('text').attr('x', m.left).attr('y', 42).attr('font-size', theme.font.subtitle)
-    .attr('fill', theme.colors.mutedText).text('都市別の月次売上（円）、2026 年 1〜2 月')
+    .attr('fill', theme.colors.secondaryText).text('都市別の月次売上（円）、2026 年 1〜2 月')
 }
 \`\`\`
 
 ### 守ること
-- \`function render({ container, d3, turf, geoWarp, datasets, width, height, theme })\` を**この名前で**定義する（async でもよい）。
+- \`function render({ container, d3, turf, geoWarp, pretext, datasets, width, height, theme })\` を**この名前で**定義する（async でもよい）。
   先頭行に「何を示す図か」の日本語コメントを書く。
 - \`container\` の中に **\`<svg>\` を 1 つだけ**作り、\`width\` / \`height\` を引数の値にし、\`viewBox\` を付ける。
   svg の直下に \`<title>\`（図の要点）を置く。タイトル・サブタイトル・出典は **svg の中に文字として描く**
@@ -124,7 +124,8 @@ function render({ container, d3, turf, geoWarp, datasets, width, height, theme }
   tabular は \`records\`（オブジェクトの配列）、geojson は \`geojson\`（FeatureCollection）と \`records\`（features）、
   raster は \`raster\`（\`{ width, height, bbox, crs, nodata, bands: [Float32Array] }\`）。
   \`datasetIds\` に挙げたものだけが渡る。複数を結合するときは render 内で \`new Map(rows.map((d) => [d.key, d]))\` で引く。
-- ライブラリは引数の \`d3\`（d3-geo-projection / d3-geo-polygon を含む）、\`turf\`、\`geoWarp\` だけ。\`import\` / \`require\` は無い。
+- ライブラリは引数の \`d3\`（d3-geo-projection / d3-geo-polygon を含む）、\`turf\`、\`geoWarp\`、
+  \`pretext\`（テキスト幅の実測と折り返し。使い方は「チャートの作法」のラベル節）だけ。\`import\` / \`require\` は無い。
 - 使えないもの: \`fetch\` / \`XMLHttpRequest\` / \`WebSocket\` / \`localStorage\` / \`import()\` / \`postMessage\`（実行前に拒否される）、
   外部 URL の画像・フォント・CSS（フレームの CSP で遮断される）、\`blob:\` URL。
 - **アニメーション・transition・タイマーは使わない**（静止画として書き出すため。描いた瞬間の状態がそのまま結果になる）。
@@ -132,7 +133,26 @@ function render({ container, d3, turf, geoWarp, datasets, width, height, theme }
   ただし主要な値・メッセージは常時見える形で描く。
 - 20 万行をそのまま 20 万個の要素にしない。集計・サンプリングするか、点群は canvas に描いて
   \`<image href={canvas.toDataURL()}>\` として埋める（要素数の目安は 5,000 まで。上限 20,000 で警告）。
-- \`theme\` の値を使って色・フォント・線幅を揃える（下表）。直書きの色はアクセントの追加や意味のある色分けだけに使う。
+- **色は必ず \`theme\` から取る**（下表。直書きの hex は使わない）。系列は \`theme.series\` を 1 番目から順に、注目以外は
+  \`theme.colors.context\`（見えるグレー）、量は \`theme.sequential\`、差は \`theme.diverging\`、増減は \`positive\` / \`negative\`。
+  薄い色・パステル・同系色でまとめない（「チャートの作法」の配色の規則を守る）。
+
+### 守る規則（MUST）
+
+1. **MUST: 白背景に白・近白を塗らない** — ❌ \`fill: '#fff'\` / \`'#f8f9fa'\`（図形が背景に溶けて消える）。
+   ✅ 例外は 2 つだけ: 濃い塗りの**内側ラベルの文字**と、隣り合う塗りを**区切る白い細線**。
+2. **MUST: 系列色は固定順・8 色まで・循環しない** — ❌ 9 色目を作る、独自の hex を散らす、途中の色から使い始める。
+   ✅ \`d3.scaleOrdinal().domain(keys).range(theme.series)\`。8 種を超えたら上位 + 「その他」に畳むか small multiples。
+3. **MUST: 量に分類色を使わない・差は 0 対称** — ❌ ヒートマップに \`scaleOrdinal\`、\`d3.scaleDiverging([-20, 0, 100], ...)\`。
+   ✅ 量は \`d3.scaleSequential(d3.interpolateBlues)\`、差は \`d3.scaleDiverging([-M, 0, M], d3.interpolateRdBu)\`（M は絶対値の最大）。
+4. **MUST: 頼まれていない装飾を足さない** — ❌ 影・グラデーション・3D 風・角丸・アニメーションを気を利かせて追加する。
+   ✅ ユーザーが指定したスタイル（色・サイズ・透明度）は update でも**必ず保持**する。
+5. **MUST: 文字は 9px 以上・薄いグレーの文字禁止** — ❌ \`font-size: 8\`、\`fill: '#ccc'\` / \`'#ddd'\` の文字。
+   ✅ 目盛りは \`theme.font.axis\`（11px）+ \`theme.colors.mutedText\`。それより下げない。
+6. **MUST: 濃い塗りの内側の文字は白、薄い塗りの内側は黒** — 塗り色の明るさで \`theme.label.insideLight\` / \`insideDark\` を選ぶ
+   （判定コードは「チャートの作法」のラベル節）。系列色そのままで文字を書かない。
+7. **MUST: \`viewBox\` と svg 直下の \`<title>\`** — 書き出しとアクセシビリティの前提。無いと警告になる。
+8. **MUST: 存在しないパレット名・API を書かない** — 下の「D3 v7 に存在しない API」の表と実在リストの範囲で書く。
 
 ### theme（render の引数）
 ${describeTheme(VIZ_THEME)}
@@ -144,6 +164,50 @@ ${describeTheme(VIZ_THEME)}
 - \`console\`: render 内の \`console.log\` の末尾 10 件。デバッグ出力はここで読める。
 - 失敗（is_error）: エラーメッセージ・スタック先頭・console が返る。読んで直し、**同じコードを再送しない**。
   3 回失敗したら原因と代替案を説明してユーザーに判断を仰ぐ。
+
+## D3 v7 に存在しない API（他版・他ライブラリからの混入）
+
+書くとその場で TypeError / ReferenceError になる。左を書きそうになったら右に置き換える。
+
+| ❌ 存在しない（出所） | ✅ 置き換え |
+|---|---|
+| \`d3.scale.linear()\` / \`d3.time.scale()\`（v3） | \`d3.scaleLinear()\` / \`d3.scaleUtc()\` |
+| \`d3.svg.axis()\` / \`d3.svg.line()\`（v3） | \`d3.axisBottom(x)\` / \`d3.line()\` |
+| \`d3.layout.pie()\` / \`d3.layout.stack()\`（v3） | \`d3.pie()\` / \`d3.stack()\` |
+| \`d3.geo.path()\` / \`d3.geo.mercator()\`（v3） | \`d3.geoPath()\` / \`d3.geoMercator()\` |
+| \`d3.time.format()\`（v3） | \`d3.timeFormat()\` / \`d3.utcFormat()\` |
+| \`d3.schemeCategory20\`（v4 で廃止） | \`theme.series\` か \`d3.schemeTableau10\` |
+| \`d3.interpolateJet\` / \`interpolateHot\` / \`interpolateCoolwarm\`（matplotlib 由来） | \`d3.interpolateTurbo\` / \`interpolateYlOrRd\` / \`interpolateRdBu\` |
+| \`d3.interpolateBlueOrange\` / \`'redGreen'\` などの色名（Vega 由来） | \`d3.interpolatePuOr\` か \`theme.diverging\` |
+| \`d3.hexbin()\`（別パッケージ・未同梱） | 座標を丸めた格子集計（\`d3.rollup\`） |
+| \`topojson.feature / mesh\`（未同梱） | GeoJSON をそのまま使う |
+| \`new Chart()\` / \`chart.render()\`（Chart.js / G2 由来） | この環境は render 関数の中で d3 を直接使う |
+
+### 実在する色スケール（この範囲だけを使う）
+- 分類: \`theme.series\`（基本）、\`d3.schemeTableau10\` / \`schemeObservable10\` / \`schemeSet2\` / \`schemeDark2\` / \`schemePaired\`
+- 単色の量: \`d3.interpolateBlues / Greens / Oranges / Reds / Purples / Greys\`
+- 多色の量: \`d3.interpolateViridis / Cividis / Turbo / YlGnBu / YlOrRd / YlGn / PuBuGn\`
+- 発散: \`d3.interpolateRdBu / RdYlBu / RdYlGn / PuOr / BrBG / PiYG\`
+- 離散階級: \`d3.schemeBlues[k]\` 等（k = 3〜9）と \`theme.sequential.blue5\`
+
+## 迷ったときに読む節（意図 → read_reference）
+
+| こういうとき | 読む |
+|---|---|
+| 図の種類を決めかねる | read_reference('dataviz', '3') |
+| 余白・タイトルの置き方 | read_reference('dataviz', '4') |
+| 軸・目盛り・グリッドの細部 | read_reference('dataviz', '6') |
+| チャートの色に迷う | read_reference('dataviz', '7') |
+| ラベル・凡例・注釈の作法 | read_reference('dataviz', '8') |
+| 投影法を選ぶ | read_reference('maps', '4') |
+| コロプレスの作り方・階級の切り方 | read_reference('maps', '10') と read_reference('maps', '11') |
+| 地図の色に迷う | read_reference('maps', '12') |
+| 地図のラベル配置 | read_reference('maps', '16') |
+| 地図が反転する・地球全体が塗られる | read_reference('geojson', '3') |
+| 座標がおかしい（巨大な値・緯度経度が逆） | read_reference('geojson', '5') と read_reference('geojson', '4') |
+| GeoJSON の切り分け手順 | read_reference('geojson', '16') |
+| ラスタの色と LUT | read_reference('raster', '11') と read_reference('raster', '35') |
+| 等値線を引きたい | read_reference('raster', '16') |
 
 ## やらないこと
 

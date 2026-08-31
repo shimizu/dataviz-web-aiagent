@@ -1,7 +1,7 @@
 // 可視化フレーム（隔離 iframe）側のブリッジ。classic script（ビルドしない・import しない）。
 //
 // 役割: 親（src/viz/viz-frame-bridge.js）から postMessage で受けた生成コードを new Function で評価し、
-//       render({ container, d3, turf, geoWarp, datasets, width, height, theme }) を呼んで、できた <svg> を文字列で返す。
+//       render({ container, d3, turf, geoWarp, pretext, datasets, width, height, theme }) を呼んで、できた <svg> を文字列で返す。
 //       データセットは Map にキャッシュし、render のたびに再送させない。console とエラーを捕捉して結果に添える。
 // 関係: viz-runtime.js（window.d3 / turf / geoWarp）を先に読み込む。メッセージ種別は src/viz/frame-protocol.js の写し
 //       （変更時は両方を直す。test/viz-frame-bridge.test.js が突き合わせる）。
@@ -160,6 +160,7 @@
           d3: window.d3,
           turf: window.turf,
           geoWarp: window.geoWarp,
+          pretext: window.pretext,
           datasets: ds,
           width: width,
           height: height,

@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs'
 import { buildToc, clipText, findSection, neighbors, splitSections } from '../src/tools/dataviz/reference-index.js'
 import { makeReferenceHandlers } from '../src/tools/dataviz/reference-handlers.js'
 import { REFERENCE_TOPICS } from '../src/tools/dataviz/reference-loader.js'
+import { DATAVIZ_WORKFLOW_SKILL } from '../src/agent/skills/dataviz-workflow.js'
+import { DATAVIZ_CHARTS_SKILL } from '../src/agent/skills/dataviz-charts.js'
 import { GEOJSON_REFERENCE_TOC } from '../src/agent/skills/dataviz-geojson.js'
 import { MAPS_REFERENCE_TOC } from '../src/agent/skills/dataviz-maps.js'
 import { RASTER_REFERENCE_TOC } from '../src/agent/skills/dataviz-raster.js'
@@ -159,5 +161,32 @@ test('dataviz ソースは read_reference を登録し、スキルを 5 本持�
     ['# スキル: データ可視化の進め方', '# スキル: チャートの作法（折れ線・棒・散布図・分布）', '# スキル: 地図の作法（コロプレス・比例シンボル・ラベル）', '# スキル: GeoJSON の診断と修正', '# スキル: ラスタ（GeoTIFF）の作法'],
   )
   const total = datavizSource.skills.reduce((n, s) => n + s.length, 0)
-  assert.ok(total < 40_000, `スキル合計 ${total} 文字（目安 4 万文字以内）`)
+  assert.ok(total < 50_000, `スキル合計 ${total} 文字（目安 5 万文字以内）`)
+})
+
+test('全スキルが MUST を持ち、作図系スキルは事故集を持つ', () => {
+  for (const skill of datavizSource.skills) {
+    assert.ok(skill.includes('守る規則（MUST）'), `${skill.split('\n')[0]} に MUST が無い`)
+  }
+  for (const skill of [DATAVIZ_CHARTS_SKILL, DATAVIZ_MAPS_SKILL, DATAVIZ_GEOJSON_SKILL, DATAVIZ_RASTER_SKILL]) {
+    assert.ok(skill.includes('よくある事故と修正'), `${skill.split('\n')[0]} に事故集が無い`)
+  }
+})
+
+test('workflow の意図表・スキル本文の read_reference は実在する節番号を指す', () => {
+  const cache = new Map()
+  const sectionsOf = (topic) => {
+    if (!cache.has(topic)) cache.set(topic, splitSections(readGuide(topic)).sections)
+    return cache.get(topic)
+  }
+  const skills = [DATAVIZ_WORKFLOW_SKILL, DATAVIZ_CHARTS_SKILL, DATAVIZ_MAPS_SKILL, DATAVIZ_GEOJSON_SKILL, DATAVIZ_RASTER_SKILL]
+  let checked = 0
+  for (const skill of skills) {
+    for (const m of skill.matchAll(/read_reference\('(\w+)', '(\d+(?:\.\d+)?)'\)/g)) {
+      const [, topic, number] = m
+      assert.ok(findSection(sectionsOf(topic), number).section, `${topic} §${number} がガイドに無い`)
+      checked += 1
+    }
+  }
+  assert.ok(checked >= 14, `意図表の参照が少なすぎる（${checked} 件）`)
 })

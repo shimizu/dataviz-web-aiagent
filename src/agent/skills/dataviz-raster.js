@@ -30,6 +30,15 @@ const toc = RASTER_REFERENCE_TOC.map(([n, t]) => `| ${n} | ${t} |`).join('\n')
 
 export const DATAVIZ_RASTER_SKILL = `# スキル: ラスタ（GeoTIFF）の作法
 
+## 守る規則（MUST）
+
+1. **MUST: nodata を 0 と混同しない** — nodata は透明のまま残す（geoWarp が自動で透明にする）。0 で埋めると偽の値になる。
+2. **MUST: 分類ラスタ（土地被覆・クラス ID）は \`interpolation('nearest')\`** — bilinear は存在しない中間クラスを作る。
+3. **MUST: \`size\` は長辺 1200 まで** — それ以上は遅いだけで見た目は変わらない。
+4. **MUST: 2 枚を比べるときは同じ \`domain\`** — 凡例も共通にする。別々だと色の意味がズレる。
+5. **MUST: ラスタの上の文字・線はインク色 + 白縁** — ラスタの色と競合させない（\`theme.label.haloWidth\` の halo）。
+6. **MUST: \`projection\` は invert を持つもの** — \`geoAlbersUsa\` は使えない（エラーになる）。
+
 ## 1. データの形
 
 \`datasets[id].raster\` = \`{ width, height, bbox: [west, south, east, north], crs, nodata, bands: [Float32Array, ...] }\`。
@@ -51,7 +60,7 @@ function render({ container, d3, turf, geoWarp, datasets, width, height, theme }
   // 投影はラスタの範囲に合わせる（世界なら Sphere、地域なら bbox の多角形に fit）
   const extent = turf.bboxPolygon(r.crs === 'EPSG:3857' ? turf.bbox(turf.toWgs84(turf.bboxPolygon(r.bbox))) : r.bbox)
   const projection = d3.geoEqualEarth().fitSize([w, h], extent)
-  const color = d3.scaleSequential(d3.interpolateYlOrRd).domain([stats.min, stats.max])
+  const color = d3.scaleSequential(d3.interpolateYlOrRd).domain([stats.min, stats.max]) // 量は単色〜暖色の連続ランプ
   const url = geoWarp().raster(r).band(0).projection(projection).size([w, h])
     .interpolation('bilinear').color(color).domain(color.domain()).toDataURL()
 
@@ -80,8 +89,20 @@ function render({ container, d3, turf, geoWarp, datasets, width, height, theme }
 | \`.toDataURL()\` / \`.toCanvas()\` / \`.toImageData()\` | \`<image href>\` に埋める data URL / canvas / 生データ |
 
 - nodata と NaN は透明になる。値域外はクランプ（端の色）される。
-- 分類ラスタは \`d3.scaleOrdinal\` を \`.color\` に渡し、\`interpolation('nearest')\`。
+- 分類ラスタは \`d3.scaleOrdinal(classes, theme.series)\` を \`.color\` に渡し、\`interpolation('nearest')\`（分類は 8 種まで。超えるなら統合）。
 - 2 枚を比べるときは同じ \`domain\` を使う（凡例も共通に）。
+
+### 色スケールの選び方
+| 値の性質 | スケール |
+|---|---|
+| 量（気温・降水・標高・濃度） | \`d3.scaleSequential(d3.interpolateBlues / YlGnBu / YlOrRd / Viridis)\`。**虹色は使わない** |
+| 基準からの差（偏差・変化） | \`d3.scaleDiverging([lo, 0, hi], d3.interpolateRdBu)\`（赤 = 負、青 = 正、中央は無彩色） |
+| 階級（風速階級・区分） | \`d3.scaleThreshold(thresholds, theme.sequential.blue5)\` |
+| 分類（土地被覆・クラス） | \`d3.scaleOrdinal(classes, theme.series)\` + nearest |
+| 陰影 | グレースケール（\`.color\` 省略）を下敷きに、上の色ラスタを opacity 0.7 |
+
+ラスタの上に重ねるベクタ（境界・等値線・ラベル）はインク色（\`theme.colors.text\` / \`secondaryText\`）か白縁つきにして、
+ラスタの色と競合させない。
 
 ## 3. 凡例
 
@@ -136,7 +157,16 @@ g.selectAll('path.iso').data(geoContours).join('path').attr('class', 'iso').attr
 | 土地被覆・分類 | nearest ラスタ + 分類凡例 |
 | 風速 | 階級面 / ラスタ |
 
-## 8. 詳細（read_reference('raster', 番号)）
+## 8. よくある事故と修正
+
+- ❌ EPSG:3857 の bbox（メートル）をそのまま \`fitSize\` の対象にして図が消える → ✅
+  \`turf.toWgs84(turf.bboxPolygon(r.bbox))\` で経緯度の範囲にしてから fit（§2 の例）。geoWarp 自体は crs を見て内部で変換する。
+- ❌ \`d3.contours\` に nodata の生値（-9999 等）が入り等値線が縁でギザつく → ✅ 先に nodata を NaN に置き換える（§4 の例）。
+- ❌ 外れ値に引っ張られて図がほぼ 1 色 → ✅ \`domain\` を stats の min / max か分位（5%〜95%）で明示する。
+- ❌ 凡例が描画と別のスケール → ✅ \`.color\` に渡したスケールから凡例を作る。
+- ❌ 陰影が真っ黒 / 真っ白 → ✅ shade を 0〜255 に正規化してから \`band\` に渡す。強さはあくまで目安（CRS の距離を無視している）。
+
+## 9. 詳細（read_reference('raster', 番号)）
 
 | 番号 | 節 |
 |---|---|

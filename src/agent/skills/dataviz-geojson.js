@@ -29,6 +29,15 @@ export const DATAVIZ_GEOJSON_SKILL = `# スキル: GeoJSON の診断と修正
 \`kind: geojson\` のデータセットを描く前に読む。このアプリは**取り込み時に座標を書き換えない**（\`describe_dataset\` の
 \`diagnostics\` に疑わしい点を列挙するだけ）。修正は render 内で、根拠のあるものだけ行う。
 
+## 守る規則（MUST）
+
+1. **MUST: \`turf.rewind\` は diagnostics に「時計回り」の指摘があるときだけ** — 正常なデータに掛けると逆に壊れる。
+2. **MUST: \`turf.flip\` / \`turf.toWgs84\` は根拠があるときだけ** — flip は座標順が逆と確認できたとき、
+   toWgs84 は Web メルカトル（EPSG:3857）のときだけ。他の EPSG はブラウザで変換できない。
+3. **MUST: NaN / null 座標の地物を除いてから描く** — 1 地物の不正で path 全体が失敗する。
+4. **MUST: 投影済み座標は \`d3.geoIdentity().reflectY(true)\`** — \`geoMercator\` を重ねると二重投影で崩れる。
+5. **MUST: \`turf.simplify\` は表示にだけ使う** — 面積・長さの集計は原本（\`featureCollection\`）で行う。
+
 ## 1. diagnostics と対処の対応
 
 | diagnostics / 症状 | 確認すること | render 内での対処 |
@@ -85,7 +94,15 @@ console の出力は render の戻り値（\`console\` 末尾 10 件）で読め
 - 数万地物・数百万頂点は SVG に向かない。\`turf.simplify\` で頂点を減らすか、面を canvas に描いて
   \`<image>\` として埋め、境界・ラベルだけ SVG に重ねる（\`d3.geoPath(projection, ctx)\` は canvas にも描ける）。
 
-## 6. 詳細（read_reference('geojson', 番号)）
+## 6. よくある事故と修正
+
+- ❌ \`rewind\` を 2 回掛けて元に戻る → ✅ 修正は取り込み後の render 内で 1 回だけ。update のたびに重ね掛けしない（毎回、元データから作る）。
+- ❌ 正常な GeoJSON に \`flip\` を掛けて世界の裏側に飛ぶ → ✅ 先にサンプル座標が \`[経度, 緯度]\` か確かめる（東京なら \`[139.7, 35.6]\`）。
+- ❌ \`unkinkPolygon\` で地物が増えて属性の対応が壊れる → ✅ 分割前に \`properties\` を退避し、分割後の各地物へコピーする。
+- ❌ bbox がメートルのまま \`fitSize\` に渡して図が消える → ✅ 投影済み座標は \`geoIdentity\` に渡す（\`fitSize\` 自体は使える）。
+- ❌ 結合キーの型が違い全部「データなし」 → ✅ \`String(r.code)\` と \`String(f.properties.code)\` で揃え、不一致件数を console へ。
+
+## 7. 詳細（read_reference('geojson', 番号)）
 
 | 番号 | 節 |
 |---|---|
