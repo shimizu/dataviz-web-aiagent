@@ -140,7 +140,10 @@ Worker へ API キー・DOM・localStorage は渡さない。
   警告にはデザイン検査（ラベルの重なり・端切れ・9px 未満・塗り色相 > 8・近白塗り）を含む。
 - `src/viz/viz-frame-bridge.js`: ready ハンドシェイク・描画の直列化・タイムアウト時は iframe をリロードして復旧・送信済みデータセットの記録。
   **iframe は DOM から外すと再読み込み、`display:none` はレイアウト値を壊す**ので、可視化タブが非表示のときは画面外へ退避する。
-- `src/viz/viz-theme.js`（デザイントークン。スキルの表もここから生成）/ `svg-export.js` / `png-export.js`（data: URL → canvas 2x。blob: を使わない）/
+- `src/viz/viz-theme.js`（デザイントークン。スキルの表もここから生成。タイポは weights / letterSpacing 込み）/
+  `font-embed.js`（書き出し時のフォント埋め込み: css2 の unicode-range チャンクから**使用文字と交差する分だけ** data: 化して
+  `<style>` 注入。`<img>` に読んだ SVG は外部フォントを取得しないため。失敗時はシステムフォントで書き出し続行）/
+  `svg-export.js` / `png-export.js`（data: URL → canvas 2x。blob: を使わない）/
   `zip-template.js` + `zip-export.js`（fflate。`file://` で開ける classic script 構成、CDN 参照なし）/ `download.js`。
 - `src/viz-runtime/geo-warp.js`: ラスタを d3 投影へ逆引き再投影（`raster-paint.js` が純関数部分）。
 
@@ -169,6 +172,11 @@ Worker へ API キー・DOM・localStorage は渡さない。
 - 可視化フレームに渡す生成コードは `src/analysis/code-guard.js` の `inspectCode` で検査する。フレームは `blob:` を親から読めないので
   画像は data: URL で埋める。
 - `@google/genai` は `useVoiceSession` の動的 import 経由でのみ読む（初期チャンクに入れない）。
+- 可視化フォントは **英数字 = Roboto Condensed（先）→ 和文 = Noto Sans JP（後）** のフォールバック順
+  （`theme.font.family`。逆にすると英数字も Noto の字形になる）。`index.html` と `public/viz-frame.html` の両方で
+  Google Fonts を読み込み、frame は初回 render 前に `document.fonts` を最大 3 秒待つ（pretext 実測と
+  デザイン検査の字形ズレ防止）。CSP は親・frame とも style-src に fonts.googleapis.com /
+  font-src に fonts.gstatic.com（親の connect-src には埋め込み fetch 用に両ホスト）。
 
 ## 参考
 切り出し元: gee-ai-agent（Google Earth Engine 分析エージェント。地図レイヤー・データセット・チャート・PortWatch を持つ。

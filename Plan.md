@@ -145,4 +145,20 @@ font: {
 
 ## 進捗
 
-- 未着手。
+- **完了（2026-09-01）**: 段 1〜5 をすべて実施。
+  - 段 1: index.html / viz-frame.html に preconnect + css2 リンク、CSP を親・frame の 2 箇所更新
+    （frame は connect-src 'none' のまま style-src / font-src だけ許可）。frame は初回 render 前に
+    `document.fonts` を最大 3 秒待つ。フレーム内で 13 面ロード・Roboto Condensed の数字幅 98.7px vs
+    システム 111.2px を実測（サンドボックスのプロキシがブラウザ TLS を切るため page.route + curl 実バイトで代替）。
+  - 段 2: theme.font に weights（title 700 / value 800 / label 600 / source 500）と letterSpacing を追加。
+    workflow 模範例と charts §2 をカードの四点セット（結論タイトル・契約文サブタイトル・図・出典行）に更新。
+    スキル本文から模範例を抽出して描画する検証方式に切替（乖離防止）。
+  - 段 3: charts に家具（発丝レール・刻み・引出線）・ドットフィールド（単位分解）・色運用 3 規則・wire 型。
+    §6/§12 の重複刈り込み + 上限 55k へ緩和（合計 52,450 文字）。
+  - 段 4: font-embed.js（css2 パース → unicode-range × 使用文字の交差選択 → data: @font-face 注入。
+    純関数部は node テスト、fetch は注入）。App の svg / png DL と zip（fonts.css 同梱・viz.svg にも注入）に結線。
+    実 Google バイトで 16 face・8KB → 1.5MB、`<img>` 経路（PNG と同一）のラスタライズを確認。
+  - 段 5: 目視 6+1 図（従来 6 図 + ドットフィールド。全図警告 0・新フォント適用を確認）、CLAUDE.md /
+    docs/architecture.md 同期。テスト 140 件 / lint 0 / build 成功。
+  - 未実施: 実 API キーでの生成確認（課金）。フォント指定は本文「Roboto」に対しリンクが Roboto Condensed
+    だったため**リンクを正**とした（通常 Roboto へは css2 の family と theme.font.family の 2 箇所差し替え）。
