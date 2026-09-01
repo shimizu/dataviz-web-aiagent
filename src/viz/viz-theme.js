@@ -82,6 +82,7 @@ export const VIZ_THEME = Object.freeze({
   }),
   // 英数字 = Roboto Condensed（先に書く）/ 和文 = Noto Sans JP（後ろへフォールバック）。
   // 順序を入れ替えると英数字も Noto の字形になるので厳守。後続はオフライン用のシステム和文。
+  // ウェイトの階層（タイトル 700 / 図内数値 800 / ラベル 600）が「デザインされて見える」大部分を担う。
   font: Object.freeze({
     family: '"Roboto Condensed", "Noto Sans JP", system-ui, "Hiragino Sans", "Yu Gothic", sans-serif',
     title: 20,
@@ -89,6 +90,8 @@ export const VIZ_THEME = Object.freeze({
     axis: 11,
     label: 12,
     note: 10,
+    weights: Object.freeze({ title: 700, subtitle: 400, value: 800, label: 600, axis: 400, source: 500 }),
+    letterSpacing: Object.freeze({ title: '-0.02em', source: '0.08em' }),
   }),
   line: Object.freeze({ normal: 2, focus: 2.5, context: 1.5 }),
   radius: Object.freeze({ point: 4, focus: 5.5 }),

@@ -73,8 +73,9 @@ function render({ container, d3, Plot, datasets, width, height, theme }) {
 
   // 2. 土台は Plot（軸・グリッド・目盛りの既定値に任せる。系列色は必ず theme.series）
   const HEADER = 56                                    // タイトル + サブタイトル分
+  const FOOTER = 22                                    // 出典行の分
   const chart = Plot.plot({
-    width: width - 16, height: height - HEADER - 8,    // 入れ子のオフセット分を必ず差し引く
+    width: width - 16, height: height - HEADER - FOOTER,  // 入れ子のオフセット分を必ず差し引く
     marginLeft: 56, marginRight: 96,                   // 右は終端の直接ラベル分
     style: { fontFamily: theme.font.family, fontSize: theme.font.axis + 'px', color: theme.colors.mutedText },
     color: { domain: cities, range: theme.series },
@@ -87,15 +88,20 @@ function render({ container, d3, Plot, datasets, width, height, theme }) {
     ],
   })
 
-  // 3. 外枠の svg にタイトルを描き、Plot の svg を入れ子にする（単一 svg 契約）
+  // 3. 外枠の svg = カードの四点セット: 結論タイトル / 契約文サブタイトル / 図 / 出典行
   const svg = d3.select(container).append('svg')
     .attr('width', width).attr('height', height).attr('viewBox', [0, 0, width, height])
     .style('background', theme.colors.background)
   svg.append('title').text('東京の売上だけが 2 月に増えた')
-  svg.append('text').attr('x', 16).attr('y', 24).attr('font-size', theme.font.title).attr('font-weight', 650)
-    .attr('fill', theme.colors.text).text('東京の売上だけが 2 月に増えた')
+  svg.append('text').attr('x', 16).attr('y', 24).attr('font-size', theme.font.title)
+    .attr('font-weight', theme.font.weights.title).attr('letter-spacing', theme.font.letterSpacing.title)
+    .attr('fill', theme.colors.text).text('東京の売上だけが 2 月に増えた')   // タイトルは結論（図型名を書かない）
   svg.append('text').attr('x', 16).attr('y', 42).attr('font-size', theme.font.subtitle)
-    .attr('fill', theme.colors.secondaryText).text('都市別の月次売上（円）、2026 年 1〜2 月')
+    .attr('fill', theme.colors.secondaryText)
+    .text('都市別の月次売上（円）・1 本 = 1 都市・2025 年 9 月〜2026 年 2 月')  // 凡例・単位・期間を「・」区切りの契約文で
+  svg.append('text').attr('x', 16).attr('y', height - 8).attr('font-size', theme.font.note)
+    .attr('font-weight', theme.font.weights.source).attr('letter-spacing', theme.font.letterSpacing.source)
+    .attr('fill', theme.colors.mutedText).text('出典: 売上データ（ds_001）')
   d3.select(chart).attr('x', 8).attr('y', HEADER)
   svg.node().appendChild(chart)
 
@@ -104,7 +110,8 @@ function render({ container, d3, Plot, datasets, width, height, theme }) {
   const last = d3.rollups(rows, (v) => v[v.length - 1], (d) => d.city)
   d3.select(chart).append('g').selectAll('text').data(last).join('text')
     .attr('x', ([, d]) => xs.apply(d.date) + 8).attr('y', ([, d]) => ys.apply(d.value))
-    .attr('dominant-baseline', 'middle').attr('font-size', theme.font.label).attr('font-weight', 600)
+    .attr('dominant-baseline', 'middle').attr('font-size', theme.font.label)
+    .attr('font-weight', theme.font.weights.label)
     .attr('fill', theme.colors.text).text(([k]) => k)  // 文字はインク色。色は隣の線が示す
 }
 \`\`\`

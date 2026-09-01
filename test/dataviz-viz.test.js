@@ -200,6 +200,9 @@ test('スキルは決定的で、render 契約と theme の表を含む', () => 
   assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.annotation\.dash` \| `4 4`/, '注釈トークンが表に載る')
   assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.legend\.markerSize` \| `8`/)
   assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.label\.haloWidth` \| `3`/)
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.font\.weights\.value` \| `800`/, 'ウェイトトークンが表に載る')
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /`theme\.font\.letterSpacing\.source` \| `0\.08em`/)
+  assert.match(DATAVIZ_WORKFLOW_SKILL, /Roboto Condensed", "Noto Sans JP/, '英数字が先・和文が後のフォント順')
   for (const heading of ['### 守る規則（MUST）', '## D3 v7 に存在しない API', '## 迷ったときに読む節（意図 → read_reference）']) {
     assert.ok(DATAVIZ_WORKFLOW_SKILL.includes(heading), `workflow に ${heading} が無い`)
   }

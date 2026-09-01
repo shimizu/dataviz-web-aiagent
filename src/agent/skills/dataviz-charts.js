@@ -70,10 +70,11 @@ export const DATAVIZ_CHARTS_SKILL = `# スキル: チャートの作法（折れ
 
 \`\`\`js
 const HEADER = 56                       // タイトル + サブタイトル分。上に凡例を置くなら +24
+const FOOTER = 22                       // 出典行の分
 const keys = ['A事業', 'B事業']
 const chart = Plot.plot({
   width: width - 16,                    // 入れ子のオフセット分を必ず差し引く（右・下が切れる事故の定番）
-  height: height - HEADER - 8,
+  height: height - HEADER - FOOTER,
   marginLeft: 56, marginRight: 24,
   style: { fontFamily: theme.font.family, fontSize: theme.font.axis + 'px', color: theme.colors.mutedText },
   color: { domain: keys, range: theme.series },        // 系列色は必ず theme.series（忘れると Plot 既定色になる）
@@ -89,12 +90,21 @@ const svg = d3.select(container).append('svg')
   .attr('width', width).attr('height', height).attr('viewBox', \`0 0 \${width} \${height}\`)
 svg.append('title').text('図の要点')                    // svg 直下の <title>（MUST）
 svg.append('text').attr('x', 16).attr('y', 28).attr('font-size', theme.font.title)
-  .attr('font-weight', 650).attr('fill', theme.colors.text).text('タイトル')
+  .attr('font-weight', theme.font.weights.title).attr('letter-spacing', theme.font.letterSpacing.title)
+  .attr('fill', theme.colors.text).text('B 事業が追い上げている')            // タイトルは結論
 svg.append('text').attr('x', 16).attr('y', 46).attr('font-size', theme.font.subtitle)
-  .attr('fill', theme.colors.secondaryText).text('サブタイトル（単位・期間・対象）')
+  .attr('fill', theme.colors.secondaryText).text('月次売上（億円）・1 本 = 1 事業・2026 年上期')  // 契約文
+svg.append('text').attr('x', 16).attr('y', height - 8).attr('font-size', theme.font.note)
+  .attr('font-weight', theme.font.weights.source).attr('letter-spacing', theme.font.letterSpacing.source)
+  .attr('fill', theme.colors.mutedText).text('出典: 月次売上（ds_001）')
 d3.select(chart).attr('x', 8).attr('y', HEADER)
 svg.node().appendChild(chart)                           // Plot の svg を入れ子にする（SVG として合法）
 \`\`\`
+
+**カードの四点セット**（この順を崩さない）: ①結論式タイトル（\`weights.title\` = 700。「棒グラフ」でなく
+「何が分かったか」）②サブタイトル = **凡例・単位・期間を「・」区切りで書く契約文**（「1 点 = 1%・白抜き = 週末・6 月」。
+読者はコードを見ずこの 1 行で図の読み方を知る）③図 ④出典行（\`note\` サイズ・\`weights.source\` +
+\`letterSpacing.source\` で字間を広げ、\`mutedText\`）。図内の値ラベルは \`weights.value\`（800）で太く短く。
 
 - Plot の \`title\` / \`subtitle\` / \`caption\` / \`legend\` オプションは**使わない**（MUST 2。\`<figure>\` が返り
   「container に \`<figure>\`」エラーになる。凡例は §9 のレシピで外側 svg に描く）。
@@ -192,7 +202,9 @@ const div = d3.scaleDiverging([-max, 0, max], d3.interpolateRdBu)               
 - Margin convention: \`m = { top, right, bottom, left }\` を先に決め、\`innerWidth = width - m.left - m.right\`。
   - 上 56〜64px: タイトル + サブタイトル。下 40px: x 軸。左 48〜64px: y 軸の目盛り文字幅。右 80〜110px: 折れ線の直接ラベル分。
 - 文字サイズは \`theme.font\`（title 20 / subtitle 13 / label 12 / axis 11 / note 10）。**8px 以下にしない**。
-- 階層: タイトル（太字 650・\`text\`）→ サブタイトル（単位・期間・対象、\`secondaryText\`）→ 図 → 出典・注記（note、\`mutedText\`、右下か左下）。
+- 階層: タイトル（\`weights.title\` = 700・\`text\`）→ サブタイトル（契約文、\`secondaryText\`）→ 図 →
+  出典・注記（note、\`weights.source\` + 字間、\`mutedText\`、左下か右下）。図内の数値は \`weights.value\`（800）。
+  ウェイト差（400 と 700/800）が視覚階層の主役。全部 400 のっぺりにしない。
 - 単位は毎目盛りに繰り返さず、軸ラベルかサブタイトルに 1 回。
 - ラベルが端で切れないかは目分量でなく **\`pretext\` で実測**する（§9 のラベル節）。余白は実測値から決める。
 
