@@ -77,6 +77,10 @@ API 呼び出し（`callModel`）とツール実装（`toolRegistry`）を注入
 ### ツール結果と自己修正
 
 - 戻り値は文字列ならそのまま、それ以外は `JSON.stringify` して `tool_result.content` にする。
+- 戻り値に `_image: { data, media_type }`（base64）があると、`content` は画像 + テキストの配列になる
+  （`render_visualization` が描画結果の PNG を同梱し、Claude が自分の図を見て自己修正する経路。
+  文字数上限はテキスト部にのみ適用）。runAgent の終了時には `stripToolResultImages` が画像を
+  テキストのプレースホルダへ畳む（会話は localStorage に永続化されるため、ターンを跨いで base64 を持ち越さない）。
 - **`TOOL_RESULT_CHAR_CAP = 8000`** 文字で打ち切り、「条件を絞って再実行せよ」という文言を付ける。
   → ツールは**要約だけ**返し、行データや地物はアプリ側ストアに置いて ID で参照させる設計が前提。
 - ツールが例外を投げると `is_error: true` の `tool_result` になり、Claude がメッセージを読んで入力を直して再試行する。

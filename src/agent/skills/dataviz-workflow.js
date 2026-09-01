@@ -62,60 +62,62 @@ system の「## 読み込み済みデータセット」に毎ターン示され�
 
 \`\`\`js
 // 何を示す図か: 東京の売上だけが 2 月に増えた（都市別の月次推移）
-function render({ container, d3, turf, geoWarp, pretext, datasets, width, height, theme }) {
-  // 1. データを整える（描画と分ける）
+function render({ container, d3, Plot, datasets, width, height, theme }) {
+  // 1. データを整える（縦持ち・Date 化・時系列順。描画と分ける）
   const parse = d3.utcParse('%Y-%m-%d')
   const rows = datasets.ds_001.records
     .map((d) => ({ city: d.都市, date: parse(d.年月), value: d.売上 }))
     .filter((d) => d.date && d.value != null)
-  const series = d3.groups(rows, (d) => d.city)
-  // 系列 2〜4 本: 固定順のカテゴリ色。5 本以上で注目があるなら「注目 = primary / 残り = context グレー」
-  const color = d3.scaleOrdinal().domain(series.map(([k]) => k)).range(theme.series)
+    .sort((a, b) => a.date - b.date)
+  const cities = [...new Set(rows.map((d) => d.city))]
 
-  // 2. 枠と余白（上: タイトル 2 行分、右: 直接ラベル分）
-  const m = { top: 56, right: 96, bottom: 40, left: 56 }
+  // 2. 土台は Plot（軸・グリッド・目盛りの既定値に任せる。系列色は必ず theme.series）
+  const HEADER = 56                                    // タイトル + サブタイトル分
+  const FOOTER = 22                                    // 出典行の分
+  const chart = Plot.plot({
+    width: width - 16, height: height - HEADER - FOOTER,  // 入れ子のオフセット分を必ず差し引く
+    marginLeft: 56, marginRight: 96,                   // 右は終端の直接ラベル分
+    style: { fontFamily: theme.font.family, fontSize: theme.font.axis + 'px', color: theme.colors.mutedText },
+    color: { domain: cities, range: theme.series },
+    x: { label: null, tickFormat: d3.utcFormat('%-m月') },  // 時間軸は日本語 1 行に（既定は英語 2 行で切れやすい）
+    y: { grid: true, label: '売上（円）', tickFormat: '.2~s' },
+    marks: [
+      Plot.ruleY([0], { stroke: theme.colors.axis }),
+      Plot.lineY(rows, { x: 'date', y: 'value', stroke: 'city', strokeWidth: theme.line.normal,
+        title: (d) => d.city + ': ' + d.value }),      // title チャネル = ホバーの <title>
+    ],
+  })
+
+  // 3. 外枠の svg = カードの四点セット: 結論タイトル / 契約文サブタイトル / 図 / 出典行
   const svg = d3.select(container).append('svg')
     .attr('width', width).attr('height', height).attr('viewBox', [0, 0, width, height])
-    .attr('font-family', theme.font.family).attr('font-size', theme.font.axis)
     .style('background', theme.colors.background)
   svg.append('title').text('東京の売上だけが 2 月に増えた')
+  svg.append('text').attr('x', 16).attr('y', 24).attr('font-size', theme.font.title)
+    .attr('font-weight', theme.font.weights.title).attr('letter-spacing', theme.font.letterSpacing.title)
+    .attr('fill', theme.colors.text).text('東京の売上だけが 2 月に増えた')   // タイトルは結論（図型名を書かない）
+  svg.append('text').attr('x', 16).attr('y', 42).attr('font-size', theme.font.subtitle)
+    .attr('fill', theme.colors.secondaryText)
+    .text('都市別の月次売上（円）・1 本 = 1 都市・2025 年 9 月〜2026 年 2 月')  // 凡例・単位・期間を「・」区切りの契約文で
+  svg.append('text').attr('x', 16).attr('y', height - 8).attr('font-size', theme.font.note)
+    .attr('font-weight', theme.font.weights.source).attr('letter-spacing', theme.font.letterSpacing.source)
+    .attr('fill', theme.colors.mutedText).text('出典: 売上データ（ds_001）')
+  d3.select(chart).attr('x', 8).attr('y', HEADER)
+  svg.node().appendChild(chart)
 
-  // 3. スケール
-  const x = d3.scaleUtc().domain(d3.extent(rows, (d) => d.date)).range([m.left, width - m.right])
-  const y = d3.scaleLinear().domain([0, d3.max(rows, (d) => d.value)]).nice().range([height - m.bottom, m.top])
-
-  // 4. 軸（domain 線を消し、目盛り線を薄いグリッドに）
-  svg.append('g').attr('transform', \`translate(0,\${height - m.bottom})\`)
-    .call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0))
-    .call((g) => g.select('.domain').attr('stroke', theme.colors.axis))
-    .call((g) => g.selectAll('text').attr('fill', theme.colors.mutedText))
-  svg.append('g').attr('transform', \`translate(\${m.left},0)\`)
-    .call(d3.axisLeft(y).ticks(height / 40).tickFormat(d3.format('.2~s')))
-    .call((g) => g.select('.domain').remove())
-    .call((g) => g.selectAll('.tick line').attr('x2', width - m.left - m.right).attr('stroke', theme.colors.grid))
-    .call((g) => g.selectAll('text').attr('fill', theme.colors.mutedText))
-
-  // 5. データ層（系列ごとに固定順の色。線は 2px、終端に直接ラベル）
-  const line = d3.line().defined((d) => d.value != null).x((d) => x(d.date)).y((d) => y(d.value))
-  svg.append('g').selectAll('path').data(series).join('path')
-    .attr('fill', 'none').attr('d', ([, v]) => line(v))
-    .attr('stroke', ([k]) => color(k)).attr('stroke-width', theme.line.normal)
-    .attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round')
-  svg.append('g').selectAll('text').data(series).join('text')
-    .attr('x', ([, v]) => x(v.at(-1).date) + 8).attr('y', ([, v]) => y(v.at(-1).value))
-    .attr('dominant-baseline', 'middle').attr('font-size', theme.font.label).attr('font-weight', 600)
-    .attr('fill', theme.colors.text).text(([k]) => k)   // 文字はインク色。色は隣の線が示す
-
-  // 6. タイトル・サブタイトル（図の中に描く。書き出しても残るように）
-  svg.append('text').attr('x', m.left).attr('y', 24).attr('font-size', theme.font.title).attr('font-weight', 650)
-    .attr('fill', theme.colors.text).text('東京の売上だけが 2 月に増えた')
-  svg.append('text').attr('x', m.left).attr('y', 42).attr('font-size', theme.font.subtitle)
-    .attr('fill', theme.colors.secondaryText).text('都市別の月次売上（円）、2026 年 1〜2 月')
+  // 4. 仕上げは d3（終端の直接ラベル。座標は Plot のスケールから取る）
+  const xs = chart.scale('x'), ys = chart.scale('y')
+  const last = d3.rollups(rows, (v) => v[v.length - 1], (d) => d.city)
+  d3.select(chart).append('g').selectAll('text').data(last).join('text')
+    .attr('x', ([, d]) => xs.apply(d.date) + 8).attr('y', ([, d]) => ys.apply(d.value))
+    .attr('dominant-baseline', 'middle').attr('font-size', theme.font.label)
+    .attr('font-weight', theme.font.weights.label)
+    .attr('fill', theme.colors.text).text(([k]) => k)  // 文字はインク色。色は隣の線が示す
 }
 \`\`\`
 
 ### 守ること
-- \`function render({ container, d3, turf, geoWarp, pretext, datasets, width, height, theme })\` を**この名前で**定義する（async でもよい）。
+- \`function render({ container, d3, Plot, turf, geoWarp, pretext, datasets, width, height, theme })\` を**この名前で**定義する（async でもよい）。
   先頭行に「何を示す図か」の日本語コメントを書く。
 - \`container\` の中に **\`<svg>\` を 1 つだけ**作り、\`width\` / \`height\` を引数の値にし、\`viewBox\` を付ける。
   svg の直下に \`<title>\`（図の要点）を置く。タイトル・サブタイトル・出典は **svg の中に文字として描く**
@@ -124,8 +126,9 @@ function render({ container, d3, turf, geoWarp, pretext, datasets, width, height
   tabular は \`records\`（オブジェクトの配列）、geojson は \`geojson\`（FeatureCollection）と \`records\`（features）、
   raster は \`raster\`（\`{ width, height, bbox, crs, nodata, bands: [Float32Array] }\`）。
   \`datasetIds\` に挙げたものだけが渡る。複数を結合するときは render 内で \`new Map(rows.map((d) => [d.key, d]))\` で引く。
-- ライブラリは引数の \`d3\`（d3-geo-projection / d3-geo-polygon を含む）、\`turf\`、\`geoWarp\`、
-  \`pretext\`（テキスト幅の実測と折り返し。使い方は「チャートの作法」のラベル節）だけ。\`import\` / \`require\` は無い。
+- ライブラリは引数の \`d3\`（d3-geo-projection / d3-geo-polygon を含む）、\`Plot\`（Observable Plot。基本チャートの土台）、
+  \`turf\`、\`geoWarp\`、\`pretext\`（テキスト幅の実測と折り返し。使い方は「チャートの作法」のラベル節）だけ。
+  \`import\` / \`require\` は無い。
 - 使えないもの: \`fetch\` / \`XMLHttpRequest\` / \`WebSocket\` / \`localStorage\` / \`import()\` / \`postMessage\`（実行前に拒否される）、
   外部 URL の画像・フォント・CSS（フレームの CSP で遮断される）、\`blob:\` URL。
 - **アニメーション・transition・タイマーは使わない**（静止画として書き出すため。描いた瞬間の状態がそのまま結果になる）。
@@ -153,11 +156,21 @@ function render({ container, d3, turf, geoWarp, pretext, datasets, width, height
    （判定コードは「チャートの作法」のラベル節）。系列色そのままで文字を書かない。
 7. **MUST: \`viewBox\` と svg 直下の \`<title>\`** — 書き出しとアクセシビリティの前提。無いと警告になる。
 8. **MUST: 存在しないパレット名・API を書かない** — 下の「D3 v7 に存在しない API」の表と実在リストの範囲で書く。
+9. **MUST: 基本チャートは \`Plot\` で組む** — 折れ線・棒・散布図などは「チャートの作法」§2 の型（外側 svg + 入れ子）。
+   Plot の \`title\` / \`caption\` / \`legend\` オプションは \`<figure>\` を生成して単一 svg 契約を壊すため使わない。
+   **地図・GeoJSON・ラスタは Plot で描かず**、d3 + \`fitExtent\`（「地図の作法」ほか各スキル）で描く。
+10. **MUST: 描画結果の画像を必ず見て直す** — render / update の結果に描画画像が添付される。
+   ① ラベルの重なり・端切れ ② 余白と詰まり ③ 視覚階層（主役が一番目立つか）④ 凡例と色の対応 を点検し、
+   直せる問題があれば \`update_visualization\` で直す（**最大 2 回**まで。それ以上は現状と残る問題を報告して判断を仰ぐ）。
+   問題がなければそのまま完了してよい。warnings の指摘（重なり・端切れ・色数など）は画像で該当箇所を確認してから直す。
+   **警告への対処で図の意図を捨てない**: 依頼された切り出し範囲（AOI）・強調・スケールは維持し、
+   端切れはズームアウトでなくラベルの間引きや余白で直す。
 
 ### theme（render の引数）
 ${describeTheme(VIZ_THEME)}
 
 ### 戻り値の読み方
+- **描画結果の画像**が添付される。数値の確認だけで済ませず、必ず図として見る（MUST 10 の観点）。
 - \`stats\`: 要素数・テキスト数・画像数・SVG のバイト数・描画時間。
 - \`warnings\`: フレームが見つけた問題（svg が無い / 空 / 要素数過多 / 属性に NaN・undefined / \`<foreignObject>\` / 外部参照 /
   サイズ不一致 / \`<text>\` が無い / \`<title>\` が無い）。**NaN・undefined は必ず直す**（スケールの domain や欠損値が原因）。
@@ -181,7 +194,7 @@ ${describeTheme(VIZ_THEME)}
 | \`d3.interpolateBlueOrange\` / \`'redGreen'\` などの色名（Vega 由来） | \`d3.interpolatePuOr\` か \`theme.diverging\` |
 | \`d3.hexbin()\`（別パッケージ・未同梱） | 座標を丸めた格子集計（\`d3.rollup\`） |
 | \`topojson.feature / mesh\`（未同梱） | GeoJSON をそのまま使う |
-| \`new Chart()\` / \`chart.render()\`（Chart.js / G2 由来） | この環境は render 関数の中で d3 を直接使う |
+| \`new Chart()\` / \`chart.render()\`（Chart.js / G2 由来） | この環境は render 関数の中で \`Plot\` / \`d3\` を直接使う |
 
 ### 実在する色スケール（この範囲だけを使う）
 - 分類: \`theme.series\`（基本）、\`d3.schemeTableau10\` / \`schemeObservable10\` / \`schemeSet2\` / \`schemeDark2\` / \`schemePaired\`

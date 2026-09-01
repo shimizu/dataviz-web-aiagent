@@ -12,10 +12,12 @@ import react from '@vitejs/plugin-react'
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
-  "connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com wss://generativelanguage.googleapis.com",
+  // fonts.googleapis.com / fonts.gstatic.com は書き出し時のフォント埋め込み（font-embed.js の fetch）用
+  "connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com wss://generativelanguage.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com",
   "img-src 'self' data:",
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self' data:",
+  // Google Fonts の css2（可視化フォント: Noto Sans JP / Roboto Condensed）
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
   "worker-src 'self' blob:",
   "base-uri 'self'",
   "object-src 'none'",

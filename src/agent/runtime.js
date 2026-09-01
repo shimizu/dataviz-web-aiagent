@@ -34,14 +34,53 @@ function capToolResultText(text) {
   return `${text.slice(0, TOOL_RESULT_CHAR_CAP)}…（結果が大きいため省略しました。条件を絞って再実行し、必要な部分だけ取得してください）`
 }
 
+// ツール結果に _image（{ data, media_type } の base64）があれば、画像 + テキストの content 配列にする。
+// 文字数上限はテキスト部にだけ適用する（画像は別枠。モデルが自分の描いた図を見て自己修正するための経路）。
 function createToolResult(call, result, isError = false) {
-  const text = typeof result === 'string' ? result : JSON.stringify(result ?? null)
+  const image = result && typeof result === 'object' && !Array.isArray(result) ? result._image : null
+  let payload = result
+  if (image) {
+    const { _image, ...rest } = result
+    payload = rest
+  }
+  const text = typeof payload === 'string' ? payload : JSON.stringify(payload ?? null)
+  const capped = capToolResultText(text)
+  if (image?.data && image?.media_type) {
+    return {
+      type: 'tool_result',
+      tool_use_id: call.id,
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: image.media_type, data: image.data } },
+        { type: 'text', text: capped },
+      ],
+      ...(isError ? { is_error: true } : {}),
+    }
+  }
   return {
     type: 'tool_result',
     tool_use_id: call.id,
-    content: capToolResultText(text),
+    content: capped,
     ...(isError ? { is_error: true } : {}),
   }
+}
+
+const IMAGE_STRIPPED_NOTE = '（描画結果の画像。過去ターンのため省略）'
+
+// 画像はそのターンで図を確認するためだけに使う。会話ストアは全メッセージを localStorage に永続化するため、
+// ターンを跨いで base64 を持ち越すと容量とトークンをすぐ食い潰す。終了時にテキストへ畳む。
+export function stripToolResultImages(messages) {
+  return messages.map((msg) => {
+    if (msg?.role !== 'user' || !Array.isArray(msg.content)) return msg
+    let changed = false
+    const content = msg.content.map((block) => {
+      if (block?.type !== 'tool_result' || !Array.isArray(block.content)) return block
+      const texts = block.content.filter((b) => b?.type === 'text').map((b) => b.text)
+      if (block.content.length === texts.length) return block
+      changed = true
+      return { ...block, content: [IMAGE_STRIPPED_NOTE, ...texts].join('\n') }
+    })
+    return changed ? { ...msg, content } : msg
+  })
 }
 
 export async function runAgent({
@@ -62,7 +101,7 @@ export async function runAgent({
 
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     if (signal?.aborted) {
-      return { status: 'aborted', messages }
+      return { status: 'aborted', messages: stripToolResultImages(messages) }
     }
 
     onEvent({ type: 'model_request', iteration })
@@ -117,19 +156,19 @@ export async function runAgent({
     const content = toText(response.content)
     switch (response.stop_reason) {
       case 'end_turn':
-        return { status: 'completed', content, messages }
+        return { status: 'completed', content, messages: stripToolResultImages(messages) }
       case 'max_tokens':
-        return { status: 'truncated', content, messages }
+        return { status: 'truncated', content, messages: stripToolResultImages(messages) }
       case 'refusal':
-        return { status: 'refused', content, messages }
+        return { status: 'refused', content, messages: stripToolResultImages(messages) }
       default:
-        return { status: 'stopped', reason: response.stop_reason, content, messages }
+        return { status: 'stopped', reason: response.stop_reason, content, messages: stripToolResultImages(messages) }
     }
   }
 
   // 反復上限に達したら、ツール無しでもう一度だけ呼んで取得済みの情報で要約回答を作る。
   if (signal?.aborted) {
-    return { status: 'aborted', messages }
+    return { status: 'aborted', messages: stripToolResultImages(messages) }
   }
   try {
     onEvent({ type: 'model_request', iteration: maxIterations + 1 })
@@ -146,8 +185,8 @@ export async function runAgent({
       iteration: maxIterations + 1,
       stopReason: response.stop_reason,
     })
-    return { status: 'iteration_limit', content: toText(response.content), messages }
+    return { status: 'iteration_limit', content: toText(response.content), messages: stripToolResultImages(messages) }
   } catch {
-    return { status: 'iteration_limit', messages }
+    return { status: 'iteration_limit', messages: stripToolResultImages(messages) }
   }
 }

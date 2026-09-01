@@ -161,7 +161,7 @@ test('dataviz ソースは read_reference を登録し、スキルを 5 本持�
     ['# スキル: データ可視化の進め方', '# スキル: チャートの作法（折れ線・棒・散布図・分布）', '# スキル: 地図の作法（コロプレス・比例シンボル・ラベル）', '# スキル: GeoJSON の診断と修正', '# スキル: ラスタ（GeoTIFF）の作法'],
   )
   const total = datavizSource.skills.reduce((n, s) => n + s.length, 0)
-  assert.ok(total < 50_000, `スキル合計 ${total} 文字（目安 5 万文字以内）`)
+  assert.ok(total < 55_000, `スキル合計 ${total} 文字（目安 5.5 万文字以内。cache_control 前提でも注意の希釈を防ぐため増やしすぎない）`)
 })
 
 test('全スキルが MUST を持ち、作図系スキルは事故集を持つ', () => {

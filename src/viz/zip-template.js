@@ -104,6 +104,7 @@ ${String(code ?? '').trim()}
         render({
           container: container,
           d3: window.d3,
+          Plot: window.Plot,
           turf: window.turf,
           geoWarp: window.geoWarp,
           pretext: window.pretext,
@@ -112,9 +113,20 @@ ${String(code ?? '').trim()}
           height: ${Number(height) || 600},
           theme: theme,
         }),
-      ).catch(showError)
+      ).then(fixNestedSvg).catch(showError)
     } catch (error) {
       showError(error)
+    }
+  }
+  // 入れ子 svg（Plot など）の内部 <style> が width / height 属性を CSS で上書きして内容がずれるのを防ぐ
+  // （フレーム側 viz-frame.js の normalizeSvg と同じ補正）。
+  function fixNestedSvg() {
+    var nested = container.querySelectorAll('svg svg')
+    for (var i = 0; i < nested.length; i += 1) {
+      var el = nested[i]
+      if (el.getAttribute('width') && !el.style.width) el.style.width = el.getAttribute('width') + 'px'
+      if (el.getAttribute('height') && !el.style.height) el.style.height = el.getAttribute('height') + 'px'
+      if (!el.style.maxWidth) el.style.maxWidth = 'none'
     }
   }
   function showError(error) {
@@ -127,7 +139,7 @@ ${String(code ?? '').trim()}
 }
 
 // index.html の中身。
-export function buildIndexHtml({ title, description, generatedAt }) {
+export function buildIndexHtml({ title, description, generatedAt, hasFontCss = false }) {
   const escape = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   return `<!doctype html>
 <html lang="ja">
@@ -135,7 +147,7 @@ export function buildIndexHtml({ title, description, generatedAt }) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escape(title)}</title>
-    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./style.css" />${hasFontCss ? '\n    <link rel="stylesheet" href="./fonts.css" />' : ''}
   </head>
   <body>
     <figure class="viz-figure">
@@ -207,7 +219,7 @@ ${fileNames.map((n) => `  - ${n}`).join('\n')}
 ${list || '  （なし）'}
 
 ■ 手を入れるとき
-  viz.js の上半分が描画コード（render 関数）です。d3 / turf / geoWarp / pretext が
+  viz.js の上半分が描画コード（render 関数）です。d3 / Plot / turf / geoWarp / pretext が
   グローバルに読み込まれた状態で呼ばれます。data/datasets.js は自動生成なので
   直接編集せず、data/ 内の元ファイルから作り直すことをおすすめします。
 `

@@ -27,7 +27,8 @@ import { createVizFrameBridge } from './viz/viz-frame-bridge.js'
 import { VIZ_FRAME_PATH, VIZ_RUNTIME_PATH } from './viz/frame-protocol.js'
 import { VIZ_THEME } from './viz/viz-theme.js'
 import { svgToBlob, toFileName } from './viz/svg-export.js'
-import { svgToJpegBase64, svgToPngBlob } from './viz/png-export.js'
+import { buildEmbeddedFontCss, tryEmbedFontsInSvg } from './viz/font-embed.js'
+import { svgToJpegBase64, svgToPngBase64, svgToPngBlob } from './viz/png-export.js'
 import { buildZipFiles, createZipBlob, zipFileName } from './viz/zip-export.js'
 import { buildFinishedExtras, buildVoiceContextText, buildVoiceSnapshotData } from './viz/voice-summary.js'
 import { downloadBlob } from './viz/download.js'
@@ -201,9 +202,12 @@ function App() {
       try {
         const label = `${viz.title}_v${version.version}`
         if (kind === 'svg') {
-          downloadBlob(svgToBlob(version.svg, { width: version.width, height: version.height }), toFileName(label, 'svg'))
+          // <img> / 単体表示では外部フォントが読まれないため、使用文字ぶんだけ data: で埋め込む（失敗時はそのまま）
+          const svg = await tryEmbedFontsInSvg(version.svg, { log })
+          downloadBlob(svgToBlob(svg, { width: version.width, height: version.height }), toFileName(label, 'svg'))
         } else if (kind === 'png') {
-          const blob = await svgToPngBlob(version.svg, { width: version.width, height: version.height })
+          const svg = await tryEmbedFontsInSvg(version.svg, { log })
+          const blob = await svgToPngBlob(svg, { width: version.width, height: version.height })
           downloadBlob(blob, toFileName(label, 'png'))
         } else {
           const runtimeSource = await loadRuntimeSource()
@@ -213,7 +217,9 @@ function App() {
             .filter(Boolean)
             .map((fileId) => fileStore.get(fileId))
             .filter(Boolean)
-          const files = buildZipFiles({ viz, version, datasets, originals, runtimeSource, theme: VIZ_THEME })
+          // zip は CDN 参照なし方針のため、同じ埋め込み CSS を fonts.css として同梱（取得失敗時は無しで生成）
+          const fontCss = await buildEmbeddedFontCss(version.svg).catch(() => '')
+          const files = buildZipFiles({ viz, version, datasets, originals, runtimeSource, theme: VIZ_THEME, fontCss })
           downloadBlob(await createZipBlob(files), zipFileName(label))
         }
         log(`💾 ${viz.id} v${version.version} を ${kind.toUpperCase()} で書き出しました`)
@@ -240,6 +246,8 @@ function App() {
       getAnalysisResult: (codeHash) => analysisCache.get(codeHash),
       // 描画後に可視化タブへ切り替える。
       onVisualizationShown: (vizId) => shownCallbackRef.current?.(vizId),
+      // 描画結果の PNG（base64）。tool_result に同梱して Claude 自身に図を見せ、自己批評 → update を促す。
+      snapshotSvg: (svg, { width, height } = {}) => svgToPngBase64(svg, { width, height, maxWidth: 800 }),
     }),
     [vizBridge],
   )

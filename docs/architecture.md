@@ -152,6 +152,8 @@ flowchart TB
   | `style-src` | `'self' 'unsafe-inline'` | React のインライン style |
   | `worker-src` | `'self' blob:` | AudioWorklet と生成 JS 実行 Worker（`analysis-worker.js`） |
 
+  可視化フォント（Noto Sans JP / Roboto Condensed）は style-src に fonts.googleapis.com、font-src に
+  fonts.gstatic.com、connect-src に両ホスト（`font-embed.js` の書き出し埋め込み fetch 用）を許可している。
   **dev サーバーでは CSP が適用されない**（Vite/HMR がインライン script を注入するため）。外部ホストを増やして
   `connect-src` を更新し忘れると「dev では動くのに本番だけ壊れる」。`npm run preview` で本番相当を確認する。
 - **Worker と CSP の関係**: `analysis-worker.js` は `new Worker(new URL(...), { type: 'module' })` で同一オリジンの実ファイルとして

@@ -1,7 +1,7 @@
 // 可視化フレーム（隔離 iframe）側のブリッジ。classic script（ビルドしない・import しない）。
 //
 // 役割: 親（src/viz/viz-frame-bridge.js）から postMessage で受けた生成コードを new Function で評価し、
-//       render({ container, d3, turf, geoWarp, pretext, datasets, width, height, theme }) を呼んで、できた <svg> を文字列で返す。
+//       render({ container, d3, Plot, turf, geoWarp, pretext, datasets, width, height, theme }) を呼んで、できた <svg> を文字列で返す。
 //       データセットは Map にキャッシュし、render のたびに再送させない。console とエラーを捕捉して結果に添える。
 // 関係: viz-runtime.js（window.d3 / turf / geoWarp）を先に読み込む。メッセージ種別は src/viz/frame-protocol.js の写し
 //       （変更時は両方を直す。test/viz-frame-bridge.test.js が突き合わせる）。
@@ -26,6 +26,24 @@
   var consoleBuffer = []
   var lastError = null
   var chain = Promise.resolve()
+
+  // 可視化フォント（Roboto Condensed / Noto Sans JP）を待ってから描く。
+  // 待たないと pretext の実測幅・getBBox のデザイン検査がフォールバック字形で測られてズレる。
+  // 最大 3 秒で打ち切り、オフラインや取得失敗時はシステムフォントで描画を続ける。
+  var fontsReady = Promise.resolve()
+  if (document.fonts && document.fonts.load) {
+    fontsReady = Promise.race([
+      Promise.all([
+        document.fonts.load('700 20px "Noto Sans JP"'),
+        document.fonts.load('400 12px "Noto Sans JP"'),
+        document.fonts.load('700 20px "Roboto Condensed"'),
+        document.fonts.load('400 12px "Roboto Condensed"'),
+      ]),
+      new Promise(function (resolve) {
+        setTimeout(resolve, 3000)
+      }),
+    ]).catch(function () {})
+  }
 
   // --- console / エラー捕捉 ---
   function stringify(value) {
@@ -83,6 +101,18 @@
     }
     if (!svg.getAttribute('width')) svg.setAttribute('width', String(width))
     if (!svg.getAttribute('height')) svg.setAttribute('height', String(height))
+    // 入れ子 svg（Plot の入れ子など）は、内部の <style>（例: Plot の height:auto / max-width:100%）が
+    // width / height 属性を CSS で上書きし、preserveAspectRatio の中央寄せで内容がずれることがある。
+    // 属性値をインラインスタイルへ焼き込んで属性どおりの寸法を強制する（インラインは :where() に必ず勝つ）。
+    var nested = svg.querySelectorAll('svg')
+    for (var i = 0; i < nested.length; i += 1) {
+      var el = nested[i]
+      var nw = el.getAttribute('width')
+      var nh = el.getAttribute('height')
+      if (nw && !el.style.width) el.style.width = nw + 'px'
+      if (nh && !el.style.height) el.style.height = nh + 'px'
+      if (!el.style.maxWidth) el.style.maxWidth = 'none'
+    }
   }
 
   function collectWarnings(svg, width, height) {
@@ -125,7 +155,168 @@
     var textCount = svg.querySelectorAll('text').length
     if (textCount === 0) warnings.push('<text> がありません（タイトル・軸ラベル・凡例を確認）')
     if (!svg.querySelector('title')) warnings.push('<title> がありません（svg 直下に図の説明を入れる）')
+    collectDesignWarnings(svg, warnings)
     return { warnings: warnings, elementCount: elementCount, textCount: textCount, imageCount: svg.querySelectorAll('image').length }
+  }
+
+  // --- デザイン検査（機械的に判定できるものだけ。誤検知しやすい規則は入れない） ---
+  var MAX_LINT_TEXTS = 300
+
+  function parseRgb(value) {
+    var m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(value || '')
+    if (!m) return null
+    var a = m[4] === undefined ? 1 : parseFloat(m[4])
+    if (a === 0) return null
+    return { r: +m[1], g: +m[2], b: +m[3] }
+  }
+
+  function luminance(c) {
+    return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255
+  }
+
+  // 彩度のある色の色相を 12 バケツに量子化（ランプの濃淡は同じバケツに落ちる）
+  function hueBucket(c) {
+    var r = c.r / 255
+    var g = c.g / 255
+    var b = c.b / 255
+    var max = Math.max(r, g, b)
+    var min = Math.min(r, g, b)
+    if (max - min < 0.15) return null // 無彩色は数えない
+    var h
+    if (max === r) h = ((g - b) / (max - min)) % 6
+    else if (max === g) h = (b - r) / (max - min) + 2
+    else h = (r - g) / (max - min) + 4
+    h = (h * 60 + 360) % 360
+    return Math.floor(h / 30)
+  }
+
+  function intersect(a, b) {
+    var w = Math.min(a.right, b.right) - Math.max(a.left, b.left)
+    var h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
+    return w > 2 && h > 2 ? w * h : 0
+  }
+
+  // 2 矩形の交差矩形（交差しなければ幅・高さ 0）。
+  function intersectRect(a, b) {
+    var left = Math.max(a.left, b.left)
+    var top = Math.max(a.top, b.top)
+    var right = Math.min(a.right, b.right)
+    var bottom = Math.min(a.bottom, b.bottom)
+    return { left: left, top: top, right: right, bottom: bottom }
+  }
+
+  function intersectArea(r, b) {
+    var w = Math.min(r.right, b.right) - Math.max(r.left, b.left)
+    var h = Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top)
+    return w > 0 && h > 0 ? w * h : 0
+  }
+
+  // clip-path を持つ祖先がいるか（クリップは作者が管理している意図とみなし、検査対象から外す）。
+  function hasClipPathAncestor(el, root) {
+    for (var node = el; node && node !== root; node = node.parentElement) {
+      if (node.getAttribute && (node.getAttribute('clip-path') || (node.style && node.style.clipPath))) return true
+    }
+    return false
+  }
+
+  function collectDesignWarnings(svg, warnings) {
+    try {
+      var svgRect = svg.getBoundingClientRect()
+      var texts = svg.querySelectorAll('text')
+
+      // 1) 文字サイズ < 9px
+      var tiny = 0
+      for (var i = 0; i < texts.length; i += 1) {
+        var fs = parseFloat(getComputedStyle(texts[i]).fontSize)
+        if (fs && fs < 9) tiny += 1
+      }
+      if (tiny > 0) warnings.push('9px 未満の文字が ' + tiny + ' 個あります（theme.label.minFontSize 未満は読めない）')
+
+      // 2) ラベルの重なりと端切れ（実測の描画矩形で判定）。
+      //    クリップは意図として尊重する: clip-path 配下のテキストは作者が管理しているので対象外、
+      //    描画範囲からほぼ全部外れているラベル（AOI に切り出した地図の周辺地物など）も意図的として対象外。
+      //    「一部だけ切れている」だけを事故として数える。
+      if (texts.length > MAX_LINT_TEXTS) {
+        warnings.push('テキストが ' + texts.length + ' 個と多く、重なり検査をスキップしました（全点ラベルになっていないか確認）')
+      } else {
+        var boxes = []
+        for (var t = 0; t < texts.length; t += 1) {
+          var el = texts[t]
+          if (el.textContent.trim() === '') continue
+          if (hasClipPathAncestor(el, svg)) continue
+          var r = el.getBoundingClientRect()
+          if (r.width === 0 || r.height === 0) continue
+          // 可視率 = 外側 svg ∩ 属する入れ子 svg（overflow: hidden）に収まっている面積の割合
+          var bounds = el.ownerSVGElement && el.ownerSVGElement !== svg ? el.ownerSVGElement.getBoundingClientRect() : svgRect
+          var visible = intersectArea(intersectRect(r, bounds), svgRect) / (r.width * r.height)
+          if (visible <= 0.1) continue // ほぼ全部外 = 意図的（描かれもしない）
+          boxes.push({ rect: r, text: el.textContent.trim().slice(0, 12), visible: visible })
+        }
+        var overlapPairs = 0
+        var overlapExample = ''
+        boxes.sort(function (a, b) {
+          return a.rect.left - b.rect.left
+        })
+        for (var p = 0; p < boxes.length; p += 1) {
+          for (var q = p + 1; q < boxes.length; q += 1) {
+            if (boxes[q].rect.left >= boxes[p].rect.right) break
+            if (boxes[p].visible < 0.5 || boxes[q].visible < 0.5) continue
+            var area = intersect(boxes[p].rect, boxes[q].rect)
+            var smaller = Math.min(
+              boxes[p].rect.width * boxes[p].rect.height,
+              boxes[q].rect.width * boxes[q].rect.height,
+            )
+            if (smaller > 0 && area > smaller * 0.25) {
+              overlapPairs += 1
+              if (!overlapExample) overlapExample = '「' + boxes[p].text + '」と「' + boxes[q].text + '」'
+            }
+          }
+        }
+        if (overlapPairs > 0) {
+          warnings.push('重なっているラベルが ' + overlapPairs + ' 組あります（例: ' + overlapExample + '）。ずらす / 隠す / 縁取りで対処')
+        }
+        var clipped = 0
+        var clippedExample = ''
+        for (var c = 0; c < boxes.length; c += 1) {
+          if (boxes[c].visible < 0.98) {
+            clipped += 1
+            if (!clippedExample) clippedExample = '「' + boxes[c].text + '」'
+          }
+        }
+        if (clipped > 0) {
+          warnings.push(
+            '一部が端で切れているラベルが ' + clipped + ' 個あります（例: ' + clippedExample + '）。' +
+              'チャートは余白を広げる。切り出した地図では端にかかるラベルを隠す（範囲内の地物だけにラベルを付ける）。ズームアウトで対処しない',
+          )
+        }
+      }
+
+      // 3) 塗りの色相数 > 8（濃淡ランプは同一色相に落ちるので数えない）と、白背景の近白塗り
+      var shapes = svg.querySelectorAll('path, rect, circle, ellipse, polygon')
+      var hueSeen = {}
+      var hueCount = 0
+      var nearWhite = 0
+      var svgArea = Math.max(1, svgRect.width * svgRect.height)
+      var limit = Math.min(shapes.length, 2000)
+      for (var s = 0; s < limit; s += 1) {
+        var fill = parseRgb(getComputedStyle(shapes[s]).fill)
+        if (!fill) continue
+        var bucket = hueBucket(fill)
+        if (bucket !== null && !hueSeen[bucket]) {
+          hueSeen[bucket] = true
+          hueCount += 1
+        }
+        if (luminance(fill) > 0.95) {
+          var sr = shapes[s].getBoundingClientRect()
+          // 背景レイヤー（svg の大半を覆う矩形）と極小の区切りは除外
+          if (sr.width > 4 && sr.height > 4 && (sr.width * sr.height) / svgArea < 0.8) nearWhite += 1
+        }
+      }
+      if (hueCount > 8) warnings.push('塗りの色相が ' + hueCount + ' 種類あります（系列色は 8 まで。上位 + その他に畳むか small multiples に）')
+      if (nearWhite > 0) warnings.push('白背景に溶ける近白の塗りが ' + nearWhite + ' 個あります（theme の色を使う）')
+    } catch {
+      // 検査自体の失敗で描画を壊さない（getBBox 不可の環境など）
+    }
   }
 
   // --- 描画 ---
@@ -141,7 +332,7 @@
     container.style.width = width + 'px'
     container.style.height = height + 'px'
 
-    return Promise.resolve()
+    return fontsReady
       .then(function () {
         var ids = Array.isArray(request.datasetIds) ? request.datasetIds : []
         var missing = ids.filter(function (id) {
@@ -158,6 +349,7 @@
         return render({
           container: container,
           d3: window.d3,
+          Plot: window.Plot,
           turf: window.turf,
           geoWarp: window.geoWarp,
           pretext: window.pretext,
@@ -169,6 +361,12 @@
       })
       .then(function () {
         if (lastError) throw lastError
+        if (container.querySelector('figure')) {
+          throw new Error(
+            'container に <figure> があります。Plot の title / subtitle / caption / legend オプションは使わず、' +
+              'タイトルと凡例は外側の svg に描いて Plot.plot() の svg を入れ子にする（単一 svg 契約）',
+          )
+        }
         var svg = container.querySelector('svg')
         if (!svg) throw new Error('container に <svg> がありません（render は container の中に svg を 1 つ作る）')
         normalizeSvg(svg, width, height)
