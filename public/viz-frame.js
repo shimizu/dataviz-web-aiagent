@@ -27,6 +27,24 @@
   var lastError = null
   var chain = Promise.resolve()
 
+  // 可視化フォント（Roboto Condensed / Noto Sans JP）を待ってから描く。
+  // 待たないと pretext の実測幅・getBBox のデザイン検査がフォールバック字形で測られてズレる。
+  // 最大 3 秒で打ち切り、オフラインや取得失敗時はシステムフォントで描画を続ける。
+  var fontsReady = Promise.resolve()
+  if (document.fonts && document.fonts.load) {
+    fontsReady = Promise.race([
+      Promise.all([
+        document.fonts.load('700 20px "Noto Sans JP"'),
+        document.fonts.load('400 12px "Noto Sans JP"'),
+        document.fonts.load('700 20px "Roboto Condensed"'),
+        document.fonts.load('400 12px "Roboto Condensed"'),
+      ]),
+      new Promise(function (resolve) {
+        setTimeout(resolve, 3000)
+      }),
+    ]).catch(function () {})
+  }
+
   // --- console / エラー捕捉 ---
   function stringify(value) {
     if (typeof value === 'string') return value
@@ -314,7 +332,7 @@
     container.style.width = width + 'px'
     container.style.height = height + 'px'
 
-    return Promise.resolve()
+    return fontsReady
       .then(function () {
         var ids = Array.isArray(request.datasetIds) ? request.datasetIds : []
         var missing = ids.filter(function (id) {

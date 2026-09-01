@@ -80,8 +80,10 @@ export const VIZ_THEME = Object.freeze({
     insideDark: '#0b0b0b', // 薄い塗りの内側ラベル
     insideLight: '#ffffff', // 濃い塗りの内側ラベル
   }),
+  // 英数字 = Roboto Condensed（先に書く）/ 和文 = Noto Sans JP（後ろへフォールバック）。
+  // 順序を入れ替えると英数字も Noto の字形になるので厳守。後続はオフライン用のシステム和文。
   font: Object.freeze({
-    family: 'system-ui, -apple-system, "Segoe UI", "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif',
+    family: '"Roboto Condensed", "Noto Sans JP", system-ui, "Hiragino Sans", "Yu Gothic", sans-serif',
     title: 20,
     subtitle: 13,
     axis: 11,

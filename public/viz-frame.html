@@ -8,13 +8,22 @@
       - script-src 'self' 'unsafe-eval': viz-runtime.js / viz-frame.js と、生成コードの new Function
       - connect-src 'none': 生成コードからの外部通信を遮断（fetch / XHR / WebSocket）
       - img-src data: blob:: ラスタを canvas → data URL で <image> に埋める
+      - style-src / font-src: Google Fonts（Noto Sans JP / Roboto Condensed）。<link> の取得は
+        style-src・font-src の管轄なので connect-src 'none' のままフォントだけ許可できる
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src data: blob:; font-src data: https://fonts.gstatic.com; connect-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>viz-frame</title>
+    <!-- 可視化フォント: 英数字 = Roboto Condensed（先）/ 和文 = Noto Sans JP（後）。順序を入れ替えない -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100..900&family=Roboto+Condensed:ital,wght@0,100..900;1,100..900&display=swap"
+      rel="stylesheet"
+    />
     <style>
       html,
       body {
