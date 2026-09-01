@@ -139,7 +139,7 @@ ${String(code ?? '').trim()}
 }
 
 // index.html の中身。
-export function buildIndexHtml({ title, description, generatedAt }) {
+export function buildIndexHtml({ title, description, generatedAt, hasFontCss = false }) {
   const escape = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   return `<!doctype html>
 <html lang="ja">
@@ -147,7 +147,7 @@ export function buildIndexHtml({ title, description, generatedAt }) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escape(title)}</title>
-    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./style.css" />${hasFontCss ? '\n    <link rel="stylesheet" href="./fonts.css" />' : ''}
   </head>
   <body>
     <figure class="viz-figure">

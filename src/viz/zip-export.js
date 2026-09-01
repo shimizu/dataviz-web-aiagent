@@ -28,15 +28,20 @@ function uniqueName(used, name) {
 }
 
 // zip に入れるファイル一覧を作る（純関数）。値は文字列か Uint8Array。
-export function buildZipFiles({ viz, version, datasets = [], originals = [], runtimeSource = '', theme = {}, now = new Date() }) {
+export function buildZipFiles({ viz, version, datasets = [], originals = [], runtimeSource = '', theme = {}, fontCss = '', now = new Date() }) {
   if (!viz || !version) throw new Error('書き出す可視化がありません')
   const generatedAt = now.toISOString().replace('T', ' ').slice(0, 19)
   const files = {}
 
   files['viz.js'] = buildVizScript({ code: version.code, width: version.width, height: version.height, theme })
   files['style.css'] = buildStyleCss(theme)
+  // Web フォントの data: 埋め込み CSS（CDN 参照なしで file:// でもフォントが出る。無ければシステムフォント）
+  if (fontCss) files['fonts.css'] = fontCss
   files['data/datasets.js'] = buildDatasetsScript(datasets)
-  files['viz.svg'] = normalizeSvgForExport(version.svg, { width: version.width, height: version.height })
+  files['viz.svg'] = withFontStyle(
+    normalizeSvgForExport(version.svg, { width: version.width, height: version.height }),
+    fontCss,
+  )
   if (runtimeSource) files['viz-runtime.js'] = runtimeSource
 
   // 元データ（あれば）。zip から元の csv / geojson を取り出せるようにする。
@@ -49,9 +54,17 @@ export function buildZipFiles({ viz, version, datasets = [], originals = [], run
     files[`data/${name}`] = typeof content === 'string' ? content : new Uint8Array(content)
   }
 
-  files['index.html'] = buildIndexHtml({ title: viz.title, description: viz.description, generatedAt })
+  files['index.html'] = buildIndexHtml({ title: viz.title, description: viz.description, generatedAt, hasFontCss: Boolean(fontCss) })
   files['README.txt'] = buildReadme({ title: viz.title, datasets, generatedAt, fileNames: Object.keys(files).sort() })
   return files
+}
+
+// 単体の viz.svg にもフォントを効かせる（<svg> 開始タグ直後に <style> を注入。fontCss 無しなら素通し）。
+function withFontStyle(svg, fontCss) {
+  if (!fontCss) return svg
+  const open = /<svg\b[^>]*>/i.exec(svg)
+  if (!open) return svg
+  return svg.replace(open[0], `${open[0]}<style>${fontCss}</style>`)
 }
 
 // 文字列を Uint8Array に揃える。
